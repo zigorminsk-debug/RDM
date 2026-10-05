@@ -12,6 +12,10 @@ on:
       - main
   workflow_dispatch:
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 permissions:
   contents: write
   packages: write
@@ -96,29 +100,27 @@ jobs:
           if-no-files-found: warn
           retention-days: 30
 
-      - name: Create GitHub Release
+      - name: Publish GitHub Release with APK
         if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/arena/'))
-        uses: softprops/action-gh-release@v2
-        with:
-          tag_name: v${{ env.VERSION_NAME }}
-          name: "RDM Release v${{ env.VERSION_NAME }} (Build ${{ env.VERSION_CODE }})"
-          body: |
-            ### 🚀 Remote Desktop Manager (RDM) Android v${{ env.VERSION_NAME }}
-            
-            **Номер сборки / Build Number**: `${{ env.VERSION_CODE }}`
-            
-            #### 📦 Что включено:
-            - 🔑 **Постоянный ключ подписи (Release Keystore)**: обновление поверх без удаления приложения.
-            - 🏢 **Иерархия клиентов и серверов**: список клиентов -> карточки серверов при клике.
-            - ⚡ **RDP запуск**: клик на карточку запускает RDP подключение (MS Remote Desktop, aFreeRDP, .rdp файл).
-            - ✏️ **Редактирование серверов**: долгое нажатие открывает модальное окно с полями (название, IP, порт, домен, логин, пароль).
-            - 💾 **Экспорт и импорт**: полное резервное копирование базы клиентов и серверов в JSON.
-            - 🌐 **Проверка доступности**: встроенный TCP Ping для теста соединения.
-            
-            #### 📥 Скачать APK:
-            - Загрузите `RDM-v${{ env.VERSION_NAME }}-signed.apk` из вложений ниже.
-          files: release-output/*.apk
-          draft: false
-          prerelease: false
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          TAG="v${{ env.VERSION_NAME }}"
+          TITLE="RDM Release v${{ env.VERSION_NAME }} (Build ${{ env.VERSION_CODE }})"
+          
+          gh release create "$TAG" release-output/*.apk \
+            --title "$TITLE" \
+            --notes "### 🚀 Remote Desktop Manager (RDM) Android v${{ env.VERSION_NAME }}
+          
+          **Номер сборки**: \`${{ env.VERSION_CODE }}\`
+          
+          #### 📦 Что включено:
+          - 🔑 **Постоянный ключ подписи (Release Keystore)**: обновление поверх без удаления приложения.
+          - 🏢 **Иерархия клиентов и серверов**: список клиентов -> карточки серверов при клике.
+          - ⚡ **RDP запуск**: клик на карточку запускает RDP подключение (MS Remote Desktop, aFreeRDP, .rdp файл).
+          - ✏️ **Редактирование серверов**: долгое нажатие открывает модальное окно со всеми полями.
+          - 💾 **Экспорт и импорт**: полное резервное копирование в JSON.
+          - 🌐 **Проверка доступности**: встроенный TCP Ping.
+          
+          #### 📥 Скачать APK:
+          - Скачайте \`RDM-v${{ env.VERSION_NAME }}-signed.apk\` ниже." || true
