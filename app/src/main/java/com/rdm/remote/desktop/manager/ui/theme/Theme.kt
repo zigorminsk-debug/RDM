@@ -6,10 +6,13 @@ import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.material3.*
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.SideEffect
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.toArgb
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalView
 import androidx.core.view.WindowCompat
+
+private val RdmTertiaryDark = Color(0xFFC7C2EA)
 
 private val DarkColorScheme = darkColorScheme(
     primary = RdmPrimaryDark,
@@ -20,7 +23,7 @@ private val DarkColorScheme = darkColorScheme(
     onSecondary = RdmOnSecondaryDark,
     secondaryContainer = RdmSecondaryContainerDark,
     onSecondaryContainer = RdmOnSecondaryContainerDark,
-    tertiary = RdmTertiayDark ?: RdmTertiary,
+    tertiary = RdmTertiaryDark,
     background = RdmBackgroundDark,
     surface = RdmSurfaceDark,
     surfaceVariant = RdmSurfaceVariantDark,
@@ -42,8 +45,6 @@ private val LightColorScheme = lightColorScheme(
     tertiaryContainer = RdmTertiaryContainer,
     onTertiaryContainer = RdmOnTertiaryContainer
 )
-
-private val RdmTertiayDark = Color(0xFFC7C2EA)
 
 @Composable
 fun RemoteDesktopManagerTheme(

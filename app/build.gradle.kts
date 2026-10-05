@@ -1,3 +1,4 @@
+import java.io.File
 import java.io.FileInputStream
 import java.util.Properties
 
@@ -46,7 +47,8 @@ android {
             if (keystorePropertiesFile.exists()) {
                 val props = Properties()
                 props.load(FileInputStream(keystorePropertiesFile))
-                storeFile = rootProject.file(props.getProperty("KEYSTORE_FILE", "keystore/release.keystore"))
+                val filePath = props.getProperty("KEYSTORE_FILE", "keystore/release.keystore")
+                storeFile = if (File(filePath).isAbsolute) File(filePath) else rootProject.file(filePath)
                 storePassword = props.getProperty("KEYSTORE_PASSWORD", "rdm_release_key_2026")
                 keyAlias = props.getProperty("KEY_ALIAS", "rdmkey")
                 keyPassword = props.getProperty("KEY_PASSWORD", "rdm_release_key_2026")

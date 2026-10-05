@@ -34,13 +34,13 @@ jobs:
           distribution: 'temurin'
           cache: 'gradle'
 
-      - name: Setup Android SDK
-        uses: android-actions/setup-android@v3
-
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.7'
+
+      - name: Generate Gradle Wrapper
+        run: gradle wrapper --gradle-version 8.7
 
       - name: Grant Execute Permission for Gradlew
         run: chmod +x gradlew
@@ -106,27 +106,18 @@ jobs:
             ### 🚀 Remote Desktop Manager (RDM) Android v${{ env.VERSION_NAME }}
             
             **Номер сборки / Build Number**: `${{ env.VERSION_CODE }}`
-            **Дата / Date**: ${{ github.event.head_commit.timestamp || 'Auto-built' }}
             
             #### 📦 Что включено:
             - 🔑 **Постоянный ключ подписи (Release Keystore)**: обновление поверх без удаления приложения.
             - 🏢 **Иерархия клиентов и серверов**: список клиентов -> карточки серверов при клике.
             - ⚡ **RDP запуск**: клик на карточку запускает RDP подключение (MS Remote Desktop, aFreeRDP, .rdp файл).
-            - ✏️ **Редактирование серверов**: долгое нажатие открывает модальное окно с полями:
-              - Название сервера
-              - IP / Хост
-              - Порт (по умолчанию 3389)
-              - Домен
-              - Логин
-              - Пароль (с переключателем видимости и копированием)
+            - ✏️ **Редактирование серверов**: долгое нажатие открывает модальное окно с полями (название, IP, порт, домен, логин, пароль).
             - 💾 **Экспорт и импорт**: полное резервное копирование базы клиентов и серверов в JSON.
             - 🌐 **Проверка доступности**: встроенный TCP Ping для теста соединения.
             
             #### 📥 Скачать APK:
             - Загрузите `RDM-v${{ env.VERSION_NAME }}-signed.apk` из вложений ниже.
-          files: |
-            release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk
-            release-output/RDM-v${{ env.VERSION_NAME }}-debug.apk
+          files: release-output/*.apk
           draft: false
           prerelease: false
         env:
