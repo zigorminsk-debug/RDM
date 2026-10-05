@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths xmlns:android="http://schemas.android.com/apk/res/android">
+    <cache-path name="rdp_cache" path="rdp/" />
+    <files-path name="rdp_files" path="rdp/" />
+    <external-cache-path name="rdp_ext_cache" path="rdp/" />
+</paths>

@@ -1,0 +1,133 @@
+name: Build and Release RDM Android App
+
+on:
+  push:
+    branches:
+      - main
+      - 'arena/**'
+    tags:
+      - 'v*'
+  pull_request:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: write
+  packages: write
+
+jobs:
+  build:
+    name: Build Signed Android APK
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          java-version: '17'
+          distribution: 'temurin'
+          cache: 'gradle'
+
+      - name: Setup Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.7'
+
+      - name: Grant Execute Permission for Gradlew
+        run: chmod +x gradlew
+
+      - name: Compute Build & Version Info
+        id: versioning
+        run: |
+          RUN_NUM="${{ github.run_number }}"
+          VERSION_CODE=$((1000 + RUN_NUM))
+          VERSION_NAME="1.0.${RUN_NUM}"
+          echo "VERSION_CODE=${VERSION_CODE}" >> $GITHUB_ENV
+          echo "VERSION_NAME=${VERSION_NAME}" >> $GITHUB_ENV
+          echo "BUILD_NUMBER=${RUN_NUM}" >> $GITHUB_ENV
+          echo "Computed version: ${VERSION_NAME} (code: ${VERSION_CODE})"
+
+      - name: Build Signed Release and Debug APKs
+        env:
+          BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        run: |
+          ./gradlew assembleRelease assembleDebug --stacktrace --no-daemon
+
+      - name: Organize Artifacts
+        run: |
+          mkdir -p release-output
+          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
+          DEBUG_APK=$(find app/build/outputs/apk/debug -name "*.apk" | head -n 1)
+          
+          if [ -n "$RELEASE_APK" ] && [ -f "$RELEASE_APK" ]; then
+            cp "$RELEASE_APK" "release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
+            echo "RELEASE_APK_PATH=release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk" >> $GITHUB_ENV
+          fi
+          
+          if [ -n "$DEBUG_APK" ] && [ -f "$DEBUG_APK" ]; then
+            cp "$DEBUG_APK" "release-output/RDM-v${{ env.VERSION_NAME }}-debug.apk"
+          fi
+          
+          ls -la release-output/
+
+      - name: Upload Release APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RDM-v${{ env.VERSION_NAME }}-Release-APK
+          path: release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Upload Debug APK Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RDM-v${{ env.VERSION_NAME }}-Debug-APK
+          path: release-output/RDM-v${{ env.VERSION_NAME }}-debug.apk
+          if-no-files-found: warn
+          retention-days: 30
+
+      - name: Create GitHub Release
+        if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || startsWith(github.ref, 'refs/heads/arena/'))
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ env.VERSION_NAME }}
+          name: "RDM Release v${{ env.VERSION_NAME }} (Build ${{ env.VERSION_CODE }})"
+          body: |
+            ### 🚀 Remote Desktop Manager (RDM) Android v${{ env.VERSION_NAME }}
+            
+            **Номер сборки / Build Number**: `${{ env.VERSION_CODE }}`
+            **Дата / Date**: ${{ github.event.head_commit.timestamp || 'Auto-built' }}
+            
+            #### 📦 Что включено:
+            - 🔑 **Постоянный ключ подписи (Release Keystore)**: обновление поверх без удаления приложения.
+            - 🏢 **Иерархия клиентов и серверов**: список клиентов -> карточки серверов при клике.
+            - ⚡ **RDP запуск**: клик на карточку запускает RDP подключение (MS Remote Desktop, aFreeRDP, .rdp файл).
+            - ✏️ **Редактирование серверов**: долгое нажатие открывает модальное окно с полями:
+              - Название сервера
+              - IP / Хост
+              - Порт (по умолчанию 3389)
+              - Домен
+              - Логин
+              - Пароль (с переключателем видимости и копированием)
+            - 💾 **Экспорт и импорт**: полное резервное копирование базы клиентов и серверов в JSON.
+            - 🌐 **Проверка доступности**: встроенный TCP Ping для теста соединения.
+            
+            #### 📥 Скачать APK:
+            - Загрузите `RDM-v${{ env.VERSION_NAME }}-signed.apk` из вложений ниже.
+          files: |
+            release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk
+            release-output/RDM-v${{ env.VERSION_NAME }}-debug.apk
+          draft: false
+          prerelease: false
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

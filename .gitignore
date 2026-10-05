@@ -1,0 +1,15 @@
+*.iml
+.gradle
+/local.properties
+/.idea/
+.DS_Store
+/build
+/captures
+.externalNativeBuild
+.cxx
+/app/build
+/release-output
+
+# Include keystore directory so release signing works in CI/CD out-of-the-box
+!keystore/release.keystore
+!keystore/keystore.properties
