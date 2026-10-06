@@ -83,6 +83,9 @@ fun RdpSessionScreen(
     var isDirectTypingActive by remember { mutableStateOf(false) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
+    // Standalone hardware cursor position decoupled from bitmap state (ZERO screen flickering)
+    var cursorPosition by remember { mutableStateOf(Offset(960f, 540f)) }
+
     // Zoom & Pan state
     var zoomScale by remember { mutableFloatStateOf(1f) }
     var panOffsetX by remember { mutableFloatStateOf(0f) }
@@ -116,10 +119,11 @@ fun RdpSessionScreen(
                             detectDragGestures(
                                 onDrag = { change, dragAmount ->
                                     change.consume()
-                                    rdpEngine.moveCursor(
-                                        (dragAmount.x / zoomScale) * 1.6f,
-                                        (dragAmount.y / zoomScale) * 1.6f
-                                    )
+                                    val newX = (cursorPosition.x + (dragAmount.x / zoomScale) * 1.5f)
+                                        .coerceIn(0f, state.desktopWidth.toFloat())
+                                    val newY = (cursorPosition.y + (dragAmount.y / zoomScale) * 1.5f)
+                                        .coerceIn(0f, state.desktopHeight.toFloat())
+                                    cursorPosition = Offset(newX, newY)
                                 }
                             )
                         } else {
@@ -133,7 +137,10 @@ fun RdpSessionScreen(
                                         if (containerSize.width > 0 && containerSize.height > 0) {
                                             val mappedX = (change.position.x / containerSize.width.toFloat()) * state.desktopWidth
                                             val mappedY = (change.position.y / containerSize.height.toFloat()) * state.desktopHeight
-                                            rdpEngine.setCursorPosition(mappedX, mappedY)
+                                            cursorPosition = Offset(
+                                                mappedX.coerceIn(0f, state.desktopWidth.toFloat()),
+                                                mappedY.coerceIn(0f, state.desktopHeight.toFloat())
+                                            )
                                         }
                                     }
                                 }
@@ -147,11 +154,13 @@ fun RdpSessionScreen(
                                     if (containerSize.width > 0 && containerSize.height > 0) {
                                         val mappedX = (tapOffset.x / containerSize.width.toFloat()) * state.desktopWidth
                                         val mappedY = (tapOffset.y / containerSize.height.toFloat()) * state.desktopHeight
-                                        rdpEngine.setCursorPosition(mappedX, mappedY)
-                                        rdpEngine.handleLeftClick()
+                                        val clampedX = mappedX.coerceIn(0f, state.desktopWidth.toFloat())
+                                        val clampedY = mappedY.coerceIn(0f, state.desktopHeight.toFloat())
+                                        cursorPosition = Offset(clampedX, clampedY)
+                                        rdpEngine.handleLeftClick(clampedX, clampedY)
                                     }
                                 } else {
-                                    rdpEngine.handleLeftClick()
+                                    rdpEngine.handleLeftClick(cursorPosition.x, cursorPosition.y)
                                 }
                             },
                             onDoubleTap = { tapOffset ->
@@ -159,11 +168,13 @@ fun RdpSessionScreen(
                                     if (containerSize.width > 0 && containerSize.height > 0) {
                                         val mappedX = (tapOffset.x / containerSize.width.toFloat()) * state.desktopWidth
                                         val mappedY = (tapOffset.y / containerSize.height.toFloat()) * state.desktopHeight
-                                        rdpEngine.setCursorPosition(mappedX, mappedY)
-                                        rdpEngine.handleDoubleClick()
+                                        val clampedX = mappedX.coerceIn(0f, state.desktopWidth.toFloat())
+                                        val clampedY = mappedY.coerceIn(0f, state.desktopHeight.toFloat())
+                                        cursorPosition = Offset(clampedX, clampedY)
+                                        rdpEngine.handleDoubleClick(clampedX, clampedY)
                                     }
                                 } else {
-                                    rdpEngine.handleDoubleClick()
+                                    rdpEngine.handleDoubleClick(cursorPosition.x, cursorPosition.y)
                                 }
                             },
                             onLongPress = { tapOffset ->
@@ -171,17 +182,19 @@ fun RdpSessionScreen(
                                     if (containerSize.width > 0 && containerSize.height > 0) {
                                         val mappedX = (tapOffset.x / containerSize.width.toFloat()) * state.desktopWidth
                                         val mappedY = (tapOffset.y / containerSize.height.toFloat()) * state.desktopHeight
-                                        rdpEngine.setCursorPosition(mappedX, mappedY)
-                                        rdpEngine.handleRightClick()
+                                        val clampedX = mappedX.coerceIn(0f, state.desktopWidth.toFloat())
+                                        val clampedY = mappedY.coerceIn(0f, state.desktopHeight.toFloat())
+                                        cursorPosition = Offset(clampedX, clampedY)
+                                        rdpEngine.handleRightClick(clampedX, clampedY)
                                     }
                                 } else {
-                                    rdpEngine.handleRightClick()
+                                    rdpEngine.handleRightClick(cursorPosition.x, cursorPosition.y)
                                 }
                             }
                         )
                     }
             ) {
-                // Desktop Frame Image
+                // Desktop Frame Image (Static texture - does NOT recreate on cursor move)
                 Image(
                     bitmap = bitmap.asImageBitmap(),
                     contentDescription = "RDP Remote Desktop",
@@ -189,7 +202,7 @@ fun RdpSessionScreen(
                     contentScale = ContentScale.Fit
                 )
 
-                // Mouse Pointer Cursor Overlay (in Trackpad Mode)
+                // Mouse Pointer Cursor Overlay (Smooth hardware canvas overlay)
                 if (state.mouseMode == MouseInputMode.TRACKPAD && containerSize.width > 0 && containerSize.height > 0) {
                     val scaleX = containerSize.width.toFloat() / state.desktopWidth.toFloat()
                     val scaleY = containerSize.height.toFloat() / state.desktopHeight.toFloat()
@@ -198,8 +211,8 @@ fun RdpSessionScreen(
                     val offsetX = (containerSize.width - (state.desktopWidth * actualScale)) / 2f
                     val offsetY = (containerSize.height - (state.desktopHeight * actualScale)) / 2f
 
-                    val screenCursorX = offsetX + (state.cursorX * actualScale)
-                    val screenCursorY = offsetY + (state.cursorY * actualScale)
+                    val screenCursorX = offsetX + (cursorPosition.x * actualScale)
+                    val screenCursorY = offsetY + (cursorPosition.y * actualScale)
 
                     Canvas(modifier = Modifier.fillMaxSize()) {
                         drawMousePointer(screenCursorX, screenCursorY)
@@ -406,6 +419,23 @@ fun RdpSessionScreen(
                         )
                     }
 
+                    // Quick Launch in official MS Remote Desktop
+                    IconButton(onClick = {
+                        val launched = RdpLauncher.launchRdpFile(context, server, RdpLauncher.PKG_MS_RDC_1)
+                        if (!launched) {
+                            val uriLaunched = RdpLauncher.launchRdpUri(context, server)
+                            if (!uriLaunched) {
+                                RdpLauncher.launchRdpFile(context, server)
+                            }
+                        }
+                    }) {
+                        Icon(
+                            imageVector = Icons.Default.OpenInNew,
+                            contentDescription = "Open in MS Remote Desktop",
+                            tint = Color(0xFF0078D7)
+                        )
+                    }
+
                     // Paste Clipboard button
                     IconButton(onClick = {
                         val clip = clipboardManager.getText()?.text
@@ -427,7 +457,7 @@ fun RdpSessionScreen(
                     IconButton(onClick = {
                         rdpEngine.toggleMouseMode()
                         val modeName = if (state.mouseMode == MouseInputMode.TRACKPAD) "Прямое касание" else "Тачпад со стрелкой"
-                        Toast.makeText(context, "Режим мыши: $modeName", Toast.LENGTH_SHORT).show()
+                        Toast.makeText(context, "Режим: $modeName", Toast.LENGTH_SHORT).show()
                     }) {
                         Icon(
                             imageVector = if (state.mouseMode == MouseInputMode.TRACKPAD) Icons.Default.Mouse else Icons.Default.TouchApp,
@@ -454,17 +484,6 @@ fun RdpSessionScreen(
                             imageVector = Icons.Default.Keyboard,
                             contentDescription = "Keyboard",
                             tint = if (state.isKeyboardVisible) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant
-                        )
-                    }
-
-                    // External MS Remote Desktop Launch Button
-                    IconButton(onClick = {
-                        RdpLauncher.launchRdpFile(context, server, RdpLauncher.PKG_MS_RDC_1)
-                    }) {
-                        Icon(
-                            imageVector = Icons.Default.OpenInNew,
-                            contentDescription = "Open in MS Remote Desktop",
-                            tint = Color(0xFF0078D7)
                         )
                     }
                 }
@@ -679,7 +698,7 @@ fun RdpSessionScreen(
 
             // Left Click Button (L)
             FloatingActionButton(
-                onClick = { rdpEngine.handleLeftClick() },
+                onClick = { rdpEngine.handleLeftClick(cursorPosition.x, cursorPosition.y) },
                 modifier = Modifier.size(54.dp),
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary,
@@ -690,7 +709,7 @@ fun RdpSessionScreen(
 
             // Double Click Button (2x)
             FloatingActionButton(
-                onClick = { rdpEngine.handleDoubleClick() },
+                onClick = { rdpEngine.handleDoubleClick(cursorPosition.x, cursorPosition.y) },
                 modifier = Modifier.size(46.dp),
                 containerColor = MaterialTheme.colorScheme.primaryContainer,
                 contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
@@ -701,7 +720,7 @@ fun RdpSessionScreen(
 
             // Right Click Button (R)
             FloatingActionButton(
-                onClick = { rdpEngine.handleRightClick() },
+                onClick = { rdpEngine.handleRightClick(cursorPosition.x, cursorPosition.y) },
                 modifier = Modifier.size(54.dp),
                 containerColor = MaterialTheme.colorScheme.secondaryContainer,
                 contentColor = MaterialTheme.colorScheme.onSecondaryContainer,

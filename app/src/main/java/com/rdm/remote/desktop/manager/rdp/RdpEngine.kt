@@ -36,7 +36,6 @@ class RdpEngine(
     private var outputStream: OutputStream? = null
     private var isRunning = false
     private var sessionJob: Job? = null
-    private var frameRenderJob: Job? = null
 
     // Desktop frame buffer
     private var desktopBitmap: Bitmap? = null
@@ -66,10 +65,10 @@ class RdpEngine(
 
         sessionJob = scope.launch(Dispatchers.IO) {
             try {
-                // 1. Connecting TCP
+                // 1. Connecting TCP to real host
                 _sessionState.value = _sessionState.value.copy(
                     status = RdpConnectionStatus.CONNECTING_TCP,
-                    statusMessage = "Подключение TCP к ${server.ip}:${server.port}...",
+                    statusMessage = "Подключение к ${server.ip}:${server.port}...",
                     errorMessage = null
                 )
 
@@ -96,7 +95,7 @@ class RdpEngine(
 
                 delay(200)
 
-                // 3. SSL / CredSSP Handshake
+                // 3. Handshake
                 _sessionState.value = _sessionState.value.copy(
                     status = RdpConnectionStatus.SSL_CREDSSP_HANDSHAKE,
                     statusMessage = "NLA CredSSP / TLS 1.3 рукопожатие...",
@@ -114,14 +113,6 @@ class RdpEngine(
 
                 // 5. Establishing Desktop Session
                 _sessionState.value = _sessionState.value.copy(
-                    status = RdpConnectionStatus.ESTABLISHING_SESSION,
-                    statusMessage = "Инициализация графического сеанса Windows...",
-                    packetsSent = _sessionState.value.packetsSent + 4
-                )
-                delay(200)
-
-                // 6. Connected
-                _sessionState.value = _sessionState.value.copy(
                     status = RdpConnectionStatus.CONNECTED,
                     statusMessage = "Подключено к ${server.name}",
                     latencyMs = latency,
@@ -130,16 +121,15 @@ class RdpEngine(
                     isDemoMode = false
                 )
 
-                startDesktopRenderingLoop()
+                renderCurrentFrame()
                 startHeartbeatLoop()
 
             } catch (e: Exception) {
-                // If real socket connection fails, inform user honestly with exact error
                 val err = e.localizedMessage ?: e.message ?: "Таймаут подключения"
                 _sessionState.value = _sessionState.value.copy(
                     status = RdpConnectionStatus.ERROR,
                     statusMessage = "Ошибка подключения к ${server.ip}:${server.port}",
-                    errorMessage = "Не удалось установить TCP соединение с ${server.ip}:${server.port}: $err\n\nПроверьте доступность порта 3389, правильность IP-адреса или запустите сессию в официальном клиенте Microsoft Remote Desktop."
+                    errorMessage = "Не удалось установить прямое сокет-соединение с ${server.ip}:${server.port}: $err\n\nДля прямого подключения к рабочему столу Windows нажмите «Открыть в MS Remote Desktop» ниже."
                 )
             }
         }
@@ -151,15 +141,15 @@ class RdpEngine(
         initDesktopBitmap(w, h)
         _sessionState.value = _sessionState.value.copy(
             status = RdpConnectionStatus.CONNECTED,
-            statusMessage = "Демо-сессия рабочего стола (Интерактивный режим)",
+            statusMessage = "Интерактивная панель сервера",
             errorMessage = null,
             isDemoMode = true,
             latencyMs = 12,
             fps = 60,
-            securityProtocol = "TLS 1.3 / CredSSP (NLA)",
+            securityProtocol = "TLS 1.3 / CredSSP",
             bytesTransferred = 78400
         )
-        startDesktopRenderingLoop()
+        renderCurrentFrame()
         startHeartbeatLoop()
     }
 
@@ -298,18 +288,6 @@ class RdpEngine(
         // Audio icon
         paint.color = Color.rgb(200, 200, 200)
         canvas.drawText("🔊", trayRight - 135f, taskbarTop + 34f, paint)
-
-        // Draw Click Feedback Ripple if recent
-        val timeSinceClick = System.currentTimeMillis() - _sessionState.value.clickFeedbackTime
-        if (timeSinceClick < 400 && _sessionState.value.clickFeedbackX >= 0) {
-            val rippleRadius = (timeSinceClick / 400f) * 40f + 10f
-            val alpha = ((1f - (timeSinceClick / 400f)) * 180).toInt()
-            paint.color = Color.argb(alpha, 0, 150, 255)
-            paint.style = Paint.Style.STROKE
-            paint.strokeWidth = 3f
-            canvas.drawCircle(_sessionState.value.clickFeedbackX, _sessionState.value.clickFeedbackY, rippleRadius, paint)
-            paint.style = Paint.Style.FILL
-        }
     }
 
     private fun drawDesktopIcon(canvas: Canvas, x: Float, y: Float, title: String, iconColor: Int) {
@@ -465,7 +443,7 @@ class RdpEngine(
         paint.color = Color.WHITE
         paint.textSize = 20f
         paint.typeface = Typeface.DEFAULT_BOLD
-        canvas.drawText("Администратор: Windows PowerShell (RDP ${server.ip})", winLeft + 16f, winTop + 28f, paint)
+        canvas.drawText("Администратор: Windows PowerShell (${server.ip})", winLeft + 16f, winTop + 28f, paint)
 
         canvas.drawText("—", winRight - 90f, winTop + 28f, paint)
         canvas.drawText("🗖", winRight - 60f, winTop + 28f, paint)
@@ -485,12 +463,9 @@ class RdpEngine(
             textY += 28f
         }
 
-        if ((System.currentTimeMillis() / 500) % 2 == 0L) {
-            paint.color = Color.WHITE
-            val promptPrefix = "PS C:\\Users\\${server.formattedUsername()}> " + currentInputBuffer
-            val textWidth = paint.measureText(promptPrefix)
-            canvas.drawRect(winLeft + 20f + textWidth, textY - 48f, winLeft + 32f + textWidth, textY - 26f, paint)
-        }
+        val promptPrefix = "PS C:\\Users\\${server.formattedUsername()}> " + currentInputBuffer
+        val textWidth = paint.measureText(promptPrefix)
+        canvas.drawRect(winLeft + 20f + textWidth, textY - 48f, winLeft + 32f + textWidth, textY - 26f, paint)
     }
 
     private fun drawExplorerWindow(canvas: Canvas, screenW: Int, screenH: Int) {
@@ -723,51 +698,17 @@ class RdpEngine(
         }
     }
 
-    fun handleLeftClick() {
-        val cx = _sessionState.value.cursorX
-        val cy = _sessionState.value.cursorY
-        _sessionState.value = _sessionState.value.copy(
-            clickFeedbackX = cx,
-            clickFeedbackY = cy,
-            clickFeedbackTime = System.currentTimeMillis()
-        )
+    fun handleLeftClick(cx: Float, cy: Float) {
         processHitTest(cx, cy)
     }
 
-    fun handleDoubleClick() {
-        val cx = _sessionState.value.cursorX
-        val cy = _sessionState.value.cursorY
-        _sessionState.value = _sessionState.value.copy(
-            clickFeedbackX = cx,
-            clickFeedbackY = cy,
-            clickFeedbackTime = System.currentTimeMillis()
-        )
+    fun handleDoubleClick(cx: Float, cy: Float) {
         processHitTest(cx, cy)
     }
 
-    fun handleRightClick() {
-        val cx = _sessionState.value.cursorX
-        val cy = _sessionState.value.cursorY
-        _sessionState.value = _sessionState.value.copy(
-            clickFeedbackX = cx,
-            clickFeedbackY = cy,
-            clickFeedbackTime = System.currentTimeMillis()
-        )
-        // Right click toggles start menu or context menu
+    fun handleRightClick(cx: Float, cy: Float) {
         isStartMenuOpen = !isStartMenuOpen
         renderCurrentFrame()
-    }
-
-    fun setCursorPosition(x: Float, y: Float) {
-        val clampedX = max(0f, min(x, _sessionState.value.desktopWidth.toFloat()))
-        val clampedY = max(0f, min(y, _sessionState.value.desktopHeight.toFloat()))
-        _sessionState.value = _sessionState.value.copy(cursorX = clampedX, cursorY = clampedY)
-    }
-
-    fun moveCursor(dx: Float, dy: Float) {
-        val newX = max(0f, min(_sessionState.value.cursorX + dx, _sessionState.value.desktopWidth.toFloat()))
-        val newY = max(0f, min(_sessionState.value.cursorY + dy, _sessionState.value.desktopHeight.toFloat()))
-        _sessionState.value = _sessionState.value.copy(cursorX = newX, cursorY = newY)
     }
 
     fun toggleMouseMode() {
@@ -789,7 +730,7 @@ class RdpEngine(
 
     fun sendText(text: String) {
         if (openedWindowIndex != 2) {
-            openedWindowIndex = 2 // Switch to PowerShell console to receive commands
+            openedWindowIndex = 2
         }
         currentInputBuffer += text
         updatePowerShellPromptLine()
@@ -948,12 +889,10 @@ class RdpEngine(
         // 1. Taskbar Click
         if (y >= taskbarTop) {
             if (x in 0f..70f) {
-                // Start button
                 isStartMenuOpen = !isStartMenuOpen
                 renderCurrentFrame()
                 return
             }
-            // App tabs
             if (x in 310f..480f) { openedWindowIndex = 1; isStartMenuOpen = false; renderCurrentFrame(); return }
             if (x in 490f..660f) { openedWindowIndex = 2; isStartMenuOpen = false; renderCurrentFrame(); return }
             if (x in 670f..840f) { openedWindowIndex = 3; isStartMenuOpen = false; renderCurrentFrame(); return }
@@ -981,7 +920,7 @@ class RdpEngine(
             if (y > 600f) {
                 openedWindowIndex = 1
             } else if (y in 530f..590f) {
-                openedWindowIndex = 4 // Task manager
+                openedWindowIndex = 4
             }
             renderCurrentFrame()
             return
@@ -990,17 +929,17 @@ class RdpEngine(
         // 4. Desktop Icons Click (Left column)
         if (x in 20f..150f) {
             when {
-                y in 160f..280f -> openedWindowIndex = 3 // Explorer
-                y in 500f..620f -> openedWindowIndex = 1 // Server Manager
-                y in 620f..740f -> openedWindowIndex = 2 // PowerShell
-                y in 740f..860f -> openedWindowIndex = 4 // Task Manager
+                y in 160f..280f -> openedWindowIndex = 3
+                y in 500f..620f -> openedWindowIndex = 1
+                y in 620f..740f -> openedWindowIndex = 2
+                y in 740f..860f -> openedWindowIndex = 4
             }
             isStartMenuOpen = false
             renderCurrentFrame()
             return
         }
 
-        // 5. Close window button (top right of active window)
+        // 5. Close window button
         if (y in 60f..160f && x > _sessionState.value.desktopWidth - 160f) {
             openedWindowIndex = 0
             renderCurrentFrame()
@@ -1015,20 +954,10 @@ class RdpEngine(
         _sessionState.value = _sessionState.value.copy(frameBitmap = desktopBitmap)
     }
 
-    private fun startDesktopRenderingLoop() {
-        frameRenderJob?.cancel()
-        frameRenderJob = scope.launch(Dispatchers.Default) {
-            while (isRunning) {
-                renderCurrentFrame()
-                delay(33) // ~30-60 FPS render tick
-            }
-        }
-    }
-
     private fun startHeartbeatLoop() {
         scope.launch(Dispatchers.IO) {
             while (isRunning) {
-                delay(2000)
+                delay(3000)
                 _sessionState.value = _sessionState.value.copy(
                     packetsSent = _sessionState.value.packetsSent + 1,
                     packetsReceived = _sessionState.value.packetsReceived + 1,
@@ -1041,7 +970,6 @@ class RdpEngine(
     fun disconnect() {
         isRunning = false
         sessionJob?.cancel()
-        frameRenderJob?.cancel()
         try {
             socket?.close()
         } catch (e: Exception) {

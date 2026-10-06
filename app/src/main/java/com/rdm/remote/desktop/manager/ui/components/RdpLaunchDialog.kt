@@ -128,22 +128,10 @@ fun RdpLaunchDialog(
                     color = MaterialTheme.colorScheme.primary
                 )
 
-                // 1. Primary In-App Embedded RDP Session
+                // 1. Primary: Launch MS Remote Desktop (Real remote Windows server session)
                 LaunchOptionCard(
-                    title = "Встроенный RDP клиент",
-                    subtitle = "Интерактивный удаленный рабочий стол прямо в приложении",
-                    icon = Icons.Default.Devices,
-                    color = MaterialTheme.colorScheme.primary,
-                    onClick = {
-                        onDismiss()
-                        onLaunchInApp(server)
-                    }
-                )
-
-                // 2. Launch MS Remote Desktop
-                LaunchOptionCard(
-                    title = "Запустить в MS Remote Desktop",
-                    subtitle = "Открыть через официальный клиент Microsoft",
+                    title = "Подключиться к серверу (MS Remote Desktop)",
+                    subtitle = "Прямой запуск сессии реального сервера в официальном клиенте",
                     icon = Icons.Default.Launch,
                     color = Color(0xFF0078D7),
                     onClick = {
@@ -158,10 +146,10 @@ fun RdpLaunchDialog(
                     }
                 )
 
-                // 3. Launch in generic RDP file viewer
+                // 2. Launch via generic .RDP file (aFreeRDP / Any installed client)
                 LaunchOptionCard(
-                    title = "Запустить через .RDP файл",
-                    subtitle = "Открыть в любом стороннем RDP клиенте",
+                    title = "Открыть через .RDP файл (aFreeRDP / сторонний клиент)",
+                    subtitle = "Экспорт файла настроек в любой установленный RDP-клиент",
                     icon = Icons.Outlined.OpenInNew,
                     color = Color(0xFF107C41),
                     onClick = {
@@ -170,7 +158,19 @@ fun RdpLaunchDialog(
                     }
                 )
 
-                // 4. If no client is installed, offer Google Play install option
+                // 3. In-App Server Management Console & Touchpad
+                LaunchOptionCard(
+                    title = "Встроенная консоль управления (In-App)",
+                    subtitle = "Интерактивная панель PowerShell, тест доступности и тачпад",
+                    icon = Icons.Default.Devices,
+                    color = MaterialTheme.colorScheme.primary,
+                    onClick = {
+                        onDismiss()
+                        onLaunchInApp(server)
+                    }
+                )
+
+                // 4. If no client is installed, offer Play Store install option
                 if (!isAnyClientInstalled) {
                     LaunchOptionCard(
                         title = "Установить MS Remote Desktop",
