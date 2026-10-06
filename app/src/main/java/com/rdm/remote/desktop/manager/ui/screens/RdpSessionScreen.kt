@@ -1,7 +1,5 @@
 package com.rdm.remote.desktop.manager.ui.screens
 
-import android.app.Activity
-import android.content.pm.ActivityInfo
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
@@ -10,7 +8,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.detectTransformGestures
+import androidx.compose.foundation.gestures.rememberTransformableState
+import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
@@ -30,9 +29,11 @@ import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.asImageBitmap
 import androidx.compose.ui.graphics.drawscope.Fill
 import androidx.compose.ui.graphics.drawscope.Stroke
+import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -53,6 +54,7 @@ fun RdpSessionScreen(
 ) {
     val scope = rememberCoroutineScope()
     val rdpEngine = remember(server.id) { RdpEngine(server, scope) }
+    val clipboardManager = LocalClipboardManager.current
 
     LaunchedEffect(server.id) {
         rdpEngine.startSession()
@@ -67,7 +69,27 @@ fun RdpSessionScreen(
     val state by rdpEngine.sessionState.collectAsState()
     var showDisconnectDialog by remember { mutableStateOf(false) }
     var showInfoDialog by remember { mutableStateOf(false) }
+    var showSendTextDialog by remember { mutableStateOf(false) }
+    var sendTextInput by remember { mutableStateOf("") }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
+
+    // Zoom & Pan state
+    var scale by remember { mutableFloatStateOf(1f) }
+    var panOffset by remember { mutableStateOf(Offset.Zero) }
+
+    val transformState = rememberTransformableState { zoomChange, offsetChange, _ ->
+        scale = (scale * zoomChange).coerceIn(1f, 3.5f)
+        if (scale > 1f) {
+            val maxOffsetX = (containerSize.width * (scale - 1f)) / 2f
+            val maxOffsetY = (containerSize.height * (scale - 1f)) / 2f
+            panOffset = Offset(
+                x = (panOffset.x + offsetChange.x).coerceIn(-maxOffsetX, maxOffsetX),
+                y = (panOffset.y + offsetChange.y).coerceIn(-maxOffsetY, maxOffsetY)
+            )
+        } else {
+            panOffset = Offset.Zero
+        }
+    }
 
     BackHandler {
         showDisconnectDialog = true
@@ -86,11 +108,21 @@ fun RdpSessionScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .pointerInput(state.mouseMode) {
+                    .graphicsLayer(
+                        scaleX = scale,
+                        scaleY = scale,
+                        translationX = panOffset.x,
+                        translationY = panOffset.y
+                    )
+                    .transformable(state = transformState)
+                    .pointerInput(state.mouseMode, scale) {
                         if (state.mouseMode == MouseInputMode.TRACKPAD) {
                             detectDragGestures { change, dragAmount ->
                                 change.consume()
-                                rdpEngine.moveCursor(dragAmount.x * 1.6f, dragAmount.y * 1.6f)
+                                rdpEngine.moveCursor(
+                                    (dragAmount.x / scale) * 1.6f,
+                                    (dragAmount.y / scale) * 1.6f
+                                )
                             }
                         } else {
                             detectTapGestures(
@@ -162,7 +194,7 @@ fun RdpSessionScreen(
             Box(
                 modifier = Modifier
                     .fillMaxSize()
-                    .background(Color.Black.copy(alpha = 0.85f)),
+                    .background(Color.Black.copy(alpha = 0.88f)),
                 contentAlignment = Alignment.Center
             ) {
                 Card(
@@ -211,7 +243,7 @@ fun RdpSessionScreen(
         ) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.92f),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
                 shadowElevation = 8.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -279,7 +311,16 @@ fun RdpSessionScreen(
                         )
                     }
 
-                    // 3. Virtual Keyboard / Special Keys toggle
+                    // 3. Send Text / Paste modal
+                    IconButton(onClick = { showSendTextDialog = true }) {
+                        Icon(
+                            imageVector = Icons.Default.EditNote,
+                            contentDescription = "Send Text",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
+
+                    // 4. Virtual Keyboard / Special Keys toggle
                     IconButton(onClick = { rdpEngine.toggleKeyboard() }) {
                         Icon(
                             imageVector = Icons.Default.Keyboard,
@@ -288,7 +329,7 @@ fun RdpSessionScreen(
                         )
                     }
 
-                    // 4. Session Info
+                    // 5. Session Info
                     IconButton(onClick = { showInfoDialog = true }) {
                         Icon(
                             imageVector = Icons.Outlined.Info,
@@ -333,7 +374,7 @@ fun RdpSessionScreen(
         ) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.94f),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.96f),
                 shadowElevation = 10.dp,
                 modifier = Modifier.fillMaxWidth()
             ) {
@@ -343,8 +384,30 @@ fun RdpSessionScreen(
                         .padding(8.dp),
                     verticalArrangement = Arrangement.spacedBy(6.dp)
                 ) {
-                    // Function keys Row 1: Modifier & System keys
-                    val modifierKeys = listOf("Ctrl+Alt+Del", "Win", "Esc", "Tab", "Ctrl", "Alt", "Shift", "Alt+Tab")
+                    // Quick Terminal Commands Row
+                    val quickCommands = listOf("ipconfig", "whoami", "ping", "dir", "systeminfo", "cls")
+                    LazyRow(
+                        horizontalArrangement = Arrangement.spacedBy(6.dp),
+                        modifier = Modifier.fillMaxWidth()
+                    ) {
+                        items(quickCommands) { cmd ->
+                            SuggestionChip(
+                                onClick = { rdpEngine.sendSpecialKey(cmd) },
+                                label = {
+                                    Text(
+                                        text = cmd,
+                                        style = MaterialTheme.typography.labelSmall.copy(
+                                            fontFamily = FontFamily.Monospace,
+                                            fontWeight = FontWeight.Bold
+                                        )
+                                    )
+                                }
+                            )
+                        }
+                    }
+
+                    // Modifier & System Keys Row
+                    val modifierKeys = listOf("Ctrl+Alt+Del", "Win", "Esc", "Tab", "Ctrl", "Alt", "Shift", "Alt+Tab", "Enter", "Backspace")
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
                         modifier = Modifier.fillMaxWidth()
@@ -369,7 +432,7 @@ fun RdpSessionScreen(
                         }
                     }
 
-                    // Function keys Row 2: F1-F12 and Navigation
+                    // Function keys Row: F1-F12
                     val fKeys = listOf("F1", "F2", "F3", "F4", "F5", "F6", "F7", "F8", "F9", "F10", "F11", "F12")
                     LazyRow(
                         horizontalArrangement = Arrangement.spacedBy(6.dp),
@@ -391,9 +454,25 @@ fun RdpSessionScreen(
             Row(
                 modifier = Modifier
                     .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = if (state.isKeyboardVisible) 100.dp else 24.dp),
+                    .padding(end = 16.dp, bottom = if (state.isKeyboardVisible) 130.dp else 24.dp),
                 horizontalArrangement = Arrangement.spacedBy(10.dp)
             ) {
+                // Reset Zoom button if zoomed
+                if (scale > 1f) {
+                    FloatingActionButton(
+                        onClick = {
+                            scale = 1f
+                            panOffset = Offset.Zero
+                        },
+                        modifier = Modifier.size(52.dp),
+                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                        shape = CircleShape
+                    ) {
+                        Icon(Icons.Default.ZoomOutMap, contentDescription = "Reset Zoom")
+                    }
+                }
+
                 // Left Click Button
                 FloatingActionButton(
                     onClick = { rdpEngine.handleLeftClick() },
@@ -417,6 +496,65 @@ fun RdpSessionScreen(
                 }
             }
         }
+    }
+
+    // Send Text / Paste modal
+    if (showSendTextDialog) {
+        AlertDialog(
+            onDismissRequest = { showSendTextDialog = false },
+            title = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Icon(Icons.Default.EditNote, contentDescription = null, tint = MaterialTheme.colorScheme.primary)
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text("Отправить текст в сессию")
+                }
+            },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
+                    Text(
+                        text = "Введите текст или команду для отправки в активное окно Windows / PowerShell:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    OutlinedTextField(
+                        value = sendTextInput,
+                        onValueChange = { sendTextInput = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text("Например: Get-Process, ipconfig...") },
+                        singleLine = false,
+                        maxLines = 3,
+                        trailingIcon = {
+                            IconButton(onClick = {
+                                val clip = clipboardManager.getText()?.text
+                                if (!clip.isNullOrEmpty()) {
+                                    sendTextInput = clip
+                                }
+                            }) {
+                                Icon(Icons.Outlined.ContentPaste, contentDescription = "Paste")
+                            }
+                        }
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        if (sendTextInput.isNotBlank()) {
+                            rdpEngine.sendText(sendTextInput)
+                            rdpEngine.sendSpecialKey("Enter")
+                            sendTextInput = ""
+                        }
+                        showSendTextDialog = false
+                    }
+                ) {
+                    Text("Отправить")
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showSendTextDialog = false }) {
+                    Text("Отмена")
+                }
+            }
+        )
     }
 
     // Disconnect Confirmation Dialog
@@ -501,13 +639,11 @@ private fun androidx.compose.ui.graphics.drawscope.DrawScope.drawMousePointer(x:
         close()
     }
 
-    // Pointer shadow / black border
     drawPath(
         path = path,
         color = Color.Black,
         style = Stroke(width = 3f)
     )
-    // White inside
     drawPath(
         path = path,
         color = Color.White,

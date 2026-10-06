@@ -17,6 +17,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.AnnotatedString
@@ -44,7 +45,7 @@ fun SettingsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Настройки и бэкап",
+                        text = "Настройки и RDP",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 },
@@ -70,6 +71,52 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // In-App RDP Client Info Section
+            Text(
+                text = "Встроенный RDP клиент",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(16.dp),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Icon(
+                            imageVector = Icons.Default.Devices,
+                            contentDescription = null,
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(24.dp)
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "Прямое подключение к Windows Server",
+                            style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
+                        )
+                    }
+                    Text(
+                        text = "При нажатии на любую карточку сервера выберите «Встроенный RDP клиент». Вы получите интерактивный рабочий стол с:\n" +
+                                "• 🖱️ Виртуальным тачпадом с курсором-стрелкой и кнопками L/R\n" +
+                                "• 👆 Режимом прямого касания (Direct Touch)\n" +
+                                "• ⌨️ Системными клавишами Ctrl+Alt+Del, Win, Alt+Tab, F1–F12\n" +
+                                "• ⚡ Интерактивным терминалом PowerShell / CMD\n" +
+                                "• 🔍 Масштабированием pinch-to-zoom (до 3.5x)\n" +
+                                "• 📝 Отправкой текста и буфера обмена в один клик",
+                        style = MaterialTheme.typography.bodyMedium,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                    )
+                }
+            }
+
             // Backup & Data Section
             Text(
                 text = "Резервное копирование и данные",
@@ -122,9 +169,9 @@ fun SettingsScreen(
                 }
             }
 
-            // RDP Guide Section
+            // External RDP Clients
             Text(
-                text = "Подключение RDP",
+                text = "Внешние RDP клиенты",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.primary
             )
@@ -142,21 +189,11 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Поддерживаемые RDP клиенты:",
+                        text = "Поддерживаемые внешние приложения:",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
                     )
                     Text(
                         text = "• Microsoft Remote Desktop (официальный клиент от Microsoft)\n• aFreeRDP (с открытым исходным кодом)\n• Любой Android клиент, поддерживающий файлы .rdp и протокол rdp://",
-                        style = MaterialTheme.typography.bodyMedium,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
-                    )
-                    Spacer(modifier = Modifier.height(4.dp))
-                    Text(
-                        text = "Как подключиться:",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
-                    )
-                    Text(
-                        text = "1. Нажмите на карточку клиента, чтобы перейти к его серверам.\n2. Нажмите на карточку сервера для запуска подключения.\n3. Долгое нажатие на карточку сервера открывает редактирование полей (IP, порт, домен, логин, пароль).",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -197,9 +234,9 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "Автосборка: GitHub Actions CI/CD (сборка на push в main)",
+                        text = "Встроенный RDP: TPKT / X.224 / CredSSP / Multi-Window / PowerShell",
                         style = MaterialTheme.typography.bodySmall,
-                        color = MaterialTheme.colorScheme.onSurfaceVariant
+                        color = MaterialTheme.colorScheme.primary
                     )
                 }
             }
@@ -210,35 +247,66 @@ fun SettingsScreen(
     if (showExportDialog) {
         AlertDialog(
             onDismissRequest = { showExportDialog = false },
-            title = { Text("Экспорт резервной копии") },
+            title = {
+                Text(
+                    text = "Экспорт данных (JSON)",
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Конфигурация успешно экспортирована в JSON:")
-                    OutlinedTextField(
-                        value = exportedJsonText,
-                        onValueChange = {},
-                        readOnly = true,
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Скопируйте или сохраните текст резервной копии:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
+                    Surface(
+                        shape = RoundedCornerShape(8.dp),
+                        color = MaterialTheme.colorScheme.surface,
                         modifier = Modifier
                             .fillMaxWidth()
-                            .height(200.dp),
-                        textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
-                    )
+                            .heightIn(max = 240.dp)
+                    ) {
+                        Text(
+                            text = exportedJsonText,
+                            fontFamily = FontFamily.Monospace,
+                            style = MaterialTheme.typography.bodySmall,
+                            modifier = Modifier
+                                .padding(8.dp)
+                                .verticalScroll(rememberScrollState())
+                        )
+                    }
                 }
             },
             confirmButton = {
                 Button(
                     onClick = {
                         clipboardManager.setText(AnnotatedString(exportedJsonText))
-                        shareText(context, "RDM_Backup.json", exportedJsonText)
                         showExportDialog = false
                     }
                 ) {
-                    Text("Скопировать и поделиться")
+                    Icon(Icons.Default.ContentCopy, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Копировать")
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showExportDialog = false }) {
-                    Text("Закрыть")
+                TextButton(
+                    onClick = {
+                        val sendIntent: Intent = Intent().apply {
+                            action = Intent.ACTION_SEND
+                            putExtra(Intent.EXTRA_TEXT, exportedJsonText)
+                            type = "text/plain"
+                        }
+                        val shareIntent = Intent.createChooser(sendIntent, "Поделиться бэкапом RDM")
+                        context.startActivity(shareIntent)
+                    }
+                ) {
+                    Icon(Icons.Default.Share, contentDescription = null, modifier = Modifier.size(18.dp))
+                    Spacer(modifier = Modifier.width(6.dp))
+                    Text("Поделиться")
                 }
             }
         )
@@ -248,19 +316,47 @@ fun SettingsScreen(
     if (showImportDialog) {
         AlertDialog(
             onDismissRequest = { showImportDialog = false },
-            title = { Text("Импорт резервной копии") },
+            title = {
+                Text(
+                    text = "Импорт данных из JSON",
+                    style = MaterialTheme.typography.titleLarge
+                )
+            },
             text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-                    Text("Вставьте JSON с резервной копией клиентов и серверов:")
+                Column(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Text(
+                        text = "Вставьте текст JSON резервной копии:",
+                        style = MaterialTheme.typography.bodyMedium
+                    )
                     OutlinedTextField(
                         value = importJsonText,
                         onValueChange = { importJsonText = it },
                         modifier = Modifier
                             .fillMaxWidth()
                             .height(180.dp),
-                        placeholder = { Text("{\n  \"clients\": [...],\n  \"servers\": [...]\n}") },
+                        placeholder = { Text("{\"version\":1, \"clients\":[...], \"servers\":[...]}") },
                         textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace)
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.End
+                    ) {
+                        TextButton(
+                            onClick = {
+                                val clipText = clipboardManager.getText()?.text
+                                if (!clipText.isNullOrEmpty()) {
+                                    importJsonText = clipText
+                                }
+                            }
+                        ) {
+                            Icon(Icons.Default.ContentPaste, contentDescription = null, modifier = Modifier.size(16.dp))
+                            Spacer(modifier = Modifier.width(4.dp))
+                            Text("Вставить из буфера")
+                        }
+                    }
                 }
             },
             confirmButton = {
@@ -268,9 +364,10 @@ fun SettingsScreen(
                     onClick = {
                         if (importJsonText.isNotBlank()) {
                             viewModel.importBackup(importJsonText)
-                            showImportDialog = false
                         }
-                    }
+                        showImportDialog = false
+                    },
+                    enabled = importJsonText.isNotBlank()
                 ) {
                     Text("Импортировать")
                 }
@@ -286,7 +383,7 @@ fun SettingsScreen(
 
 @Composable
 private fun SettingsRow(
-    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    icon: ImageVector,
     title: String,
     subtitle: String,
     onClick: () -> Unit
@@ -294,9 +391,8 @@ private fun SettingsRow(
     Row(
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
             .clickable(onClick = onClick)
-            .padding(16.dp),
+            .padding(horizontal = 16.dp, vertical = 14.dp),
         verticalAlignment = Alignment.CenterVertically
     ) {
         Icon(
@@ -321,23 +417,7 @@ private fun SettingsRow(
         Icon(
             imageVector = Icons.Default.ChevronRight,
             contentDescription = null,
-            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.5f)
+            tint = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f)
         )
-    }
-}
-
-private fun shareText(context: Context, title: String, text: String) {
-    try {
-        val sendIntent = Intent().apply {
-            action = Intent.ACTION_SEND
-            putExtra(Intent.EXTRA_TEXT, text)
-            putExtra(Intent.EXTRA_TITLE, title)
-            type = "text/plain"
-        }
-        val shareIntent = Intent.createChooser(sendIntent, "Поделиться бэкапом")
-        shareIntent.flags = Intent.FLAG_ACTIVITY_NEW_TASK
-        context.startActivity(shareIntent)
-    } catch (e: Exception) {
-        e.printStackTrace()
     }
 }

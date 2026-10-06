@@ -23,7 +23,7 @@ data class RdpSessionState(
     val status: RdpConnectionStatus = RdpConnectionStatus.DISCONNECTED,
     val statusMessage: String = "Отключено",
     val latencyMs: Long = 0,
-    val fps: Int = 30,
+    val fps: Int = 60,
     val serverName: String = "",
     val serverAddress: String = "",
     val desktopWidth: Int = 1920,
@@ -40,9 +40,12 @@ data class RdpSessionState(
     val isWinActive: Boolean = false,
     val isKeyboardVisible: Boolean = false,
     val isToolbarVisible: Boolean = true,
+    val activeWindow: Int = 1, // 0 = none, 1 = Server Manager, 2 = PowerShell, 3 = Explorer, 4 = Task Manager, 5 = Security
+    val currentCommandLine: String = "",
     val securityProtocol: String = "CredSSP / TLS 1.3 (NLA)",
     val packetsSent: Long = 0,
     val packetsReceived: Long = 0,
     val bytesTransferred: Long = 0,
+    val lastAction: String = "",
     val frameBitmap: Bitmap? = null
 )
