@@ -1,5 +1,6 @@
 package com.rdm.remote.desktop.manager.ui.screens
 
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.animation.*
 import androidx.compose.foundation.Canvas
@@ -8,13 +9,13 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
-import androidx.compose.foundation.gestures.rememberTransformableState
-import androidx.compose.foundation.gestures.transformable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyRow
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.*
@@ -23,6 +24,8 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -35,8 +38,10 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalSoftwareKeyboardController
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
@@ -45,16 +50,19 @@ import com.rdm.remote.desktop.manager.rdp.MouseInputMode
 import com.rdm.remote.desktop.manager.rdp.RdpConnectionStatus
 import com.rdm.remote.desktop.manager.rdp.RdpEngine
 import com.rdm.remote.desktop.manager.ui.theme.ColorOnline
-import kotlinx.coroutines.delay
+import com.rdm.remote.desktop.manager.utils.RdpLauncher
 
 @Composable
 fun RdpSessionScreen(
     server: ServerEntity,
     onDisconnect: () -> Unit
 ) {
+    val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val rdpEngine = remember(server.id) { RdpEngine(server, scope) }
     val clipboardManager = LocalClipboardManager.current
+    val keyboardController = LocalSoftwareKeyboardController.current
+    val textFocusRequester = remember { FocusRequester() }
 
     LaunchedEffect(server.id) {
         rdpEngine.startSession()
@@ -71,25 +79,14 @@ fun RdpSessionScreen(
     var showInfoDialog by remember { mutableStateOf(false) }
     var showSendTextDialog by remember { mutableStateOf(false) }
     var sendTextInput by remember { mutableStateOf("") }
+    var directTypeInput by remember { mutableStateOf("") }
+    var isDirectTypingActive by remember { mutableStateOf(false) }
     var containerSize by remember { mutableStateOf(IntSize.Zero) }
 
     // Zoom & Pan state
-    var scale by remember { mutableFloatStateOf(1f) }
-    var panOffset by remember { mutableStateOf(Offset.Zero) }
-
-    val transformState = rememberTransformableState { zoomChange, offsetChange, _ ->
-        scale = (scale * zoomChange).coerceIn(1f, 3.5f)
-        if (scale > 1f) {
-            val maxOffsetX = (containerSize.width * (scale - 1f)) / 2f
-            val maxOffsetY = (containerSize.height * (scale - 1f)) / 2f
-            panOffset = Offset(
-                x = (panOffset.x + offsetChange.x).coerceIn(-maxOffsetX, maxOffsetX),
-                y = (panOffset.y + offsetChange.y).coerceIn(-maxOffsetY, maxOffsetY)
-            )
-        } else {
-            panOffset = Offset.Zero
-        }
-    }
+    var zoomScale by remember { mutableFloatStateOf(1f) }
+    var panOffsetX by remember { mutableFloatStateOf(0f) }
+    var panOffsetY by remember { mutableFloatStateOf(0f) }
 
     BackHandler {
         showDisconnectDialog = true
@@ -109,57 +106,79 @@ fun RdpSessionScreen(
                 modifier = Modifier
                     .fillMaxSize()
                     .graphicsLayer(
-                        scaleX = scale,
-                        scaleY = scale,
-                        translationX = panOffset.x,
-                        translationY = panOffset.y
+                        scaleX = zoomScale,
+                        scaleY = zoomScale,
+                        translationX = panOffsetX,
+                        translationY = panOffsetY
                     )
-                    .transformable(state = transformState)
-                    .pointerInput(state.mouseMode, scale) {
+                    .pointerInput(state.mouseMode, zoomScale, panOffsetX, panOffsetY) {
                         if (state.mouseMode == MouseInputMode.TRACKPAD) {
-                            detectDragGestures { change, dragAmount ->
-                                change.consume()
-                                rdpEngine.moveCursor(
-                                    (dragAmount.x / scale) * 1.6f,
-                                    (dragAmount.y / scale) * 1.6f
-                                )
-                            }
+                            detectDragGestures(
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    rdpEngine.moveCursor(
+                                        (dragAmount.x / zoomScale) * 1.6f,
+                                        (dragAmount.y / zoomScale) * 1.6f
+                                    )
+                                }
+                            )
                         } else {
-                            detectTapGestures(
-                                onTap = { tapOffset ->
+                            detectDragGestures(
+                                onDrag = { change, dragAmount ->
+                                    change.consume()
+                                    if (zoomScale > 1f) {
+                                        panOffsetX += dragAmount.x
+                                        panOffsetY += dragAmount.y
+                                    } else {
+                                        if (containerSize.width > 0 && containerSize.height > 0) {
+                                            val mappedX = (change.position.x / containerSize.width.toFloat()) * state.desktopWidth
+                                            val mappedY = (change.position.y / containerSize.height.toFloat()) * state.desktopHeight
+                                            rdpEngine.setCursorPosition(mappedX, mappedY)
+                                        }
+                                    }
+                                }
+                            )
+                        }
+                    }
+                    .pointerInput(state.mouseMode, zoomScale) {
+                        detectTapGestures(
+                            onTap = { tapOffset ->
+                                if (state.mouseMode == MouseInputMode.DIRECT_TOUCH) {
                                     if (containerSize.width > 0 && containerSize.height > 0) {
                                         val mappedX = (tapOffset.x / containerSize.width.toFloat()) * state.desktopWidth
                                         val mappedY = (tapOffset.y / containerSize.height.toFloat()) * state.desktopHeight
                                         rdpEngine.setCursorPosition(mappedX, mappedY)
                                         rdpEngine.handleLeftClick()
                                     }
-                                },
-                                onLongPress = { tapOffset ->
+                                } else {
+                                    rdpEngine.handleLeftClick()
+                                }
+                            },
+                            onDoubleTap = { tapOffset ->
+                                if (state.mouseMode == MouseInputMode.DIRECT_TOUCH) {
+                                    if (containerSize.width > 0 && containerSize.height > 0) {
+                                        val mappedX = (tapOffset.x / containerSize.width.toFloat()) * state.desktopWidth
+                                        val mappedY = (tapOffset.y / containerSize.height.toFloat()) * state.desktopHeight
+                                        rdpEngine.setCursorPosition(mappedX, mappedY)
+                                        rdpEngine.handleDoubleClick()
+                                    }
+                                } else {
+                                    rdpEngine.handleDoubleClick()
+                                }
+                            },
+                            onLongPress = { tapOffset ->
+                                if (state.mouseMode == MouseInputMode.DIRECT_TOUCH) {
                                     if (containerSize.width > 0 && containerSize.height > 0) {
                                         val mappedX = (tapOffset.x / containerSize.width.toFloat()) * state.desktopWidth
                                         val mappedY = (tapOffset.y / containerSize.height.toFloat()) * state.desktopHeight
                                         rdpEngine.setCursorPosition(mappedX, mappedY)
                                         rdpEngine.handleRightClick()
                                     }
-                                }
-                            )
-                        }
-                    }
-                    .pointerInput(state.mouseMode) {
-                        if (state.mouseMode == MouseInputMode.TRACKPAD) {
-                            detectTapGestures(
-                                onTap = {
-                                    rdpEngine.handleLeftClick()
-                                },
-                                onDoubleTap = {
-                                    rdpEngine.handleLeftClick()
-                                    rdpEngine.handleLeftClick()
-                                },
-                                onLongPress = {
+                                } else {
                                     rdpEngine.handleRightClick()
                                 }
-                            )
-                        }
+                            }
+                        )
                     }
             ) {
                 // Desktop Frame Image
@@ -190,7 +209,7 @@ fun RdpSessionScreen(
         }
 
         // 2. Connecting State Overlay
-        if (state.status != RdpConnectionStatus.CONNECTED && state.status != RdpConnectionStatus.DISCONNECTED) {
+        if (state.status != RdpConnectionStatus.CONNECTED && state.status != RdpConnectionStatus.DISCONNECTED && state.status != RdpConnectionStatus.ERROR) {
             Box(
                 modifier = Modifier
                     .fillMaxSize()
@@ -231,7 +250,101 @@ fun RdpSessionScreen(
             }
         }
 
-        // 3. Top Floating Toolbar
+        // 3. Error Dialog / Unreachable Server Overlay
+        if (state.status == RdpConnectionStatus.ERROR) {
+            Box(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .background(Color.Black.copy(alpha = 0.92f)),
+                contentAlignment = Alignment.Center
+            ) {
+                Card(
+                    shape = RoundedCornerShape(20.dp),
+                    colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(24.dp)
+                ) {
+                    Column(
+                        modifier = Modifier.padding(24.dp),
+                        verticalArrangement = Arrangement.spacedBy(14.dp)
+                    ) {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Icon(
+                                imageVector = Icons.Default.Warning,
+                                contentDescription = null,
+                                tint = MaterialTheme.colorScheme.error,
+                                modifier = Modifier.size(32.dp)
+                            )
+                            Spacer(modifier = Modifier.width(12.dp))
+                            Text(
+                                text = "Ошибка подключения",
+                                style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                                color = MaterialTheme.colorScheme.error
+                            )
+                        }
+
+                        Text(
+                            text = state.errorMessage ?: "Не удалось установить RDP соединение с ${server.formattedAddress()}",
+                            style = MaterialTheme.typography.bodyMedium,
+                            color = MaterialTheme.colorScheme.onSurface
+                        )
+
+                        HorizontalDivider()
+
+                        // Action 1: Open in MS Remote Desktop
+                        Button(
+                            onClick = {
+                                val launched = RdpLauncher.launchRdpFile(context, server, RdpLauncher.PKG_MS_RDC_1)
+                                if (!launched) {
+                                    val uriLaunched = RdpLauncher.launchRdpUri(context, server)
+                                    if (!uriLaunched) {
+                                        RdpLauncher.launchRdpFile(context, server)
+                                    }
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                            colors = ButtonDefaults.buttonColors(containerColor = Color(0xFF0078D7))
+                        ) {
+                            Icon(Icons.Default.Launch, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Открыть в MS Remote Desktop")
+                        }
+
+                        // Action 2: Start Interactive Desktop Demo Session
+                        OutlinedButton(
+                            onClick = { rdpEngine.startDemoSession() },
+                            modifier = Modifier.fillMaxWidth()
+                        ) {
+                            Icon(Icons.Default.Devices, contentDescription = null)
+                            Spacer(modifier = Modifier.width(8.dp))
+                            Text("Интерактивный тест элементов (Демо)")
+                        }
+
+                        // Action 3: Retry or Disconnect
+                        Row(
+                            modifier = Modifier.fillMaxWidth(),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp)
+                        ) {
+                            OutlinedButton(
+                                onClick = onDisconnect,
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Назад")
+                            }
+                            Button(
+                                onClick = { rdpEngine.startSession() },
+                                modifier = Modifier.weight(1f)
+                            ) {
+                                Text("Повторить")
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // 4. Top Floating Toolbar
         AnimatedVisibility(
             visible = state.isToolbarVisible,
             enter = slideInVertically() + fadeIn(),
@@ -239,7 +352,7 @@ fun RdpSessionScreen(
             modifier = Modifier
                 .align(Alignment.TopCenter)
                 .fillMaxWidth()
-                .padding(horizontal = 12.dp, vertical = 8.dp)
+                .padding(horizontal = 8.dp, vertical = 6.dp)
         ) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
@@ -250,7 +363,7 @@ fun RdpSessionScreen(
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
-                        .padding(horizontal = 8.dp, vertical = 6.dp),
+                        .padding(horizontal = 6.dp, vertical = 4.dp),
                     verticalAlignment = Alignment.CenterVertically
                 ) {
                     // Disconnect / Back Button
@@ -281,7 +394,7 @@ fun RdpSessionScreen(
                             )
                             Spacer(modifier = Modifier.width(6.dp))
                             Text(
-                                text = server.name,
+                                text = server.name + if (state.isDemoMode) " (Демо)" else "",
                                 style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
                                 maxLines = 1
                             )
@@ -293,17 +406,29 @@ fun RdpSessionScreen(
                         )
                     }
 
-                    // 1. Send Ctrl+Alt+Del
-                    IconButton(onClick = { rdpEngine.sendSpecialKey("Ctrl+Alt+Del") }) {
+                    // Paste Clipboard button
+                    IconButton(onClick = {
+                        val clip = clipboardManager.getText()?.text
+                        if (!clip.isNullOrEmpty()) {
+                            rdpEngine.injectClipboard(clip)
+                            Toast.makeText(context, "Вставлен буфер: $clip", Toast.LENGTH_SHORT).show()
+                        } else {
+                            Toast.makeText(context, "Буфер обмена пуст", Toast.LENGTH_SHORT).show()
+                        }
+                    }) {
                         Icon(
-                            imageVector = Icons.Default.Security,
-                            contentDescription = "Ctrl+Alt+Del",
+                            imageVector = Icons.Outlined.ContentPaste,
+                            contentDescription = "Paste Clipboard",
                             tint = MaterialTheme.colorScheme.primary
                         )
                     }
 
-                    // 2. Mouse Mode Toggle (Trackpad vs Direct Touch)
-                    IconButton(onClick = { rdpEngine.toggleMouseMode() }) {
+                    // Mouse Mode Toggle (Trackpad vs Direct Touch)
+                    IconButton(onClick = {
+                        rdpEngine.toggleMouseMode()
+                        val modeName = if (state.mouseMode == MouseInputMode.TRACKPAD) "Прямое касание" else "Тачпад со стрелкой"
+                        Toast.makeText(context, "Режим мыши: $modeName", Toast.LENGTH_SHORT).show()
+                    }) {
                         Icon(
                             imageVector = if (state.mouseMode == MouseInputMode.TRACKPAD) Icons.Default.Mouse else Icons.Default.TouchApp,
                             contentDescription = "Mouse Mode",
@@ -311,7 +436,7 @@ fun RdpSessionScreen(
                         )
                     }
 
-                    // 3. Send Text / Paste modal
+                    // Send Text / Custom Command
                     IconButton(onClick = { showSendTextDialog = true }) {
                         Icon(
                             imageVector = Icons.Default.EditNote,
@@ -320,8 +445,11 @@ fun RdpSessionScreen(
                         )
                     }
 
-                    // 4. Virtual Keyboard / Special Keys toggle
-                    IconButton(onClick = { rdpEngine.toggleKeyboard() }) {
+                    // Virtual Keyboard / Special Keys toggle
+                    IconButton(onClick = {
+                        rdpEngine.toggleKeyboard()
+                        isDirectTypingActive = !isDirectTypingActive
+                    }) {
                         Icon(
                             imageVector = Icons.Default.Keyboard,
                             contentDescription = "Keyboard",
@@ -329,27 +457,29 @@ fun RdpSessionScreen(
                         )
                     }
 
-                    // 5. Session Info
-                    IconButton(onClick = { showInfoDialog = true }) {
+                    // External MS Remote Desktop Launch Button
+                    IconButton(onClick = {
+                        RdpLauncher.launchRdpFile(context, server, RdpLauncher.PKG_MS_RDC_1)
+                    }) {
                         Icon(
-                            imageVector = Icons.Outlined.Info,
-                            contentDescription = "Info",
-                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                            imageVector = Icons.Default.OpenInNew,
+                            contentDescription = "Open in MS Remote Desktop",
+                            tint = Color(0xFF0078D7)
                         )
                     }
                 }
             }
         }
 
-        // Toolbar expand/collapse handle button (when toolbar hidden)
+        // Pull handle when toolbar hidden
         if (!state.isToolbarVisible) {
             Surface(
                 shape = CircleShape,
-                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.8f),
+                color = MaterialTheme.colorScheme.surface.copy(alpha = 0.85f),
                 shadowElevation = 6.dp,
                 modifier = Modifier
                     .align(Alignment.TopCenter)
-                    .padding(top = 10.dp)
+                    .padding(top = 8.dp)
                     .clip(CircleShape)
                     .clickable { rdpEngine.toggleToolbar() }
             ) {
@@ -362,7 +492,62 @@ fun RdpSessionScreen(
             }
         }
 
-        // 4. Virtual Keyboard & Function Keys Dock (Bottom)
+        // 5. Direct Keyboard Input Bar (When keyboard active)
+        if (isDirectTypingActive) {
+            Surface(
+                shape = RoundedCornerShape(12.dp),
+                color = MaterialTheme.colorScheme.surface,
+                shadowElevation = 8.dp,
+                modifier = Modifier
+                    .align(Alignment.TopCenter)
+                    .padding(top = if (state.isToolbarVisible) 64.dp else 12.dp, start = 16.dp, end = 16.dp)
+                    .fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier.padding(8.dp),
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    OutlinedTextField(
+                        value = directTypeInput,
+                        onValueChange = { directTypeInput = it },
+                        modifier = Modifier
+                            .weight(1f)
+                            .focusRequester(textFocusRequester),
+                        placeholder = { Text("Печатайте здесь для ввода в сессию...") },
+                        singleLine = true,
+                        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+                        keyboardActions = KeyboardActions(
+                            onSend = {
+                                if (directTypeInput.isNotBlank()) {
+                                    rdpEngine.sendText(directTypeInput)
+                                    rdpEngine.sendSpecialKey("Enter")
+                                    directTypeInput = ""
+                                }
+                            }
+                        )
+                    )
+                    Spacer(modifier = Modifier.width(6.dp))
+                    IconButton(
+                        onClick = {
+                            if (directTypeInput.isNotBlank()) {
+                                rdpEngine.sendText(directTypeInput)
+                                rdpEngine.sendSpecialKey("Enter")
+                                directTypeInput = ""
+                            }
+                        }
+                    ) {
+                        Icon(Icons.Default.Send, contentDescription = "Send", tint = MaterialTheme.colorScheme.primary)
+                    }
+                }
+            }
+
+            LaunchedEffect(Unit) {
+                textFocusRequester.requestFocus()
+                keyboardController?.show()
+            }
+        }
+
+        // 6. Virtual Keyboard & Function Keys Dock (Bottom)
         AnimatedVisibility(
             visible = state.isKeyboardVisible,
             enter = slideInVertically(initialOffsetY = { it }) + fadeIn(),
@@ -370,7 +555,7 @@ fun RdpSessionScreen(
             modifier = Modifier
                 .align(Alignment.BottomCenter)
                 .fillMaxWidth()
-                .padding(bottom = 8.dp, start = 8.dp, end = 8.dp)
+                .padding(bottom = 6.dp, start = 6.dp, end = 6.dp)
         ) {
             Surface(
                 shape = RoundedCornerShape(16.dp),
@@ -392,7 +577,10 @@ fun RdpSessionScreen(
                     ) {
                         items(quickCommands) { cmd ->
                             SuggestionChip(
-                                onClick = { rdpEngine.sendSpecialKey(cmd) },
+                                onClick = {
+                                    rdpEngine.sendSpecialKey(cmd)
+                                    Toast.makeText(context, "Команда: $cmd", Toast.LENGTH_SHORT).show()
+                                },
                                 label = {
                                     Text(
                                         text = cmd,
@@ -421,7 +609,9 @@ fun RdpSessionScreen(
                             }
                             FilterChip(
                                 selected = isActive,
-                                onClick = { rdpEngine.sendSpecialKey(key) },
+                                onClick = {
+                                    rdpEngine.sendSpecialKey(key)
+                                },
                                 label = {
                                     Text(
                                         text = key,
@@ -449,56 +639,80 @@ fun RdpSessionScreen(
             }
         }
 
-        // 5. On-Screen Floating Mouse Buttons in Trackpad mode
-        if (state.mouseMode == MouseInputMode.TRACKPAD) {
-            Row(
-                modifier = Modifier
-                    .align(Alignment.BottomEnd)
-                    .padding(end = 16.dp, bottom = if (state.isKeyboardVisible) 130.dp else 24.dp),
-                horizontalArrangement = Arrangement.spacedBy(10.dp)
+        // 7. On-Screen Floating Mouse & Zoom Control Bar
+        Row(
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(end = 12.dp, bottom = if (state.isKeyboardVisible) 140.dp else 16.dp),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+            verticalAlignment = Alignment.CenterVertically
+        ) {
+            // Zoom In Button
+            FloatingActionButton(
+                onClick = {
+                    zoomScale = (zoomScale + 0.5f).coerceAtMost(3.5f)
+                },
+                modifier = Modifier.size(46.dp),
+                containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                shape = CircleShape
             ) {
-                // Reset Zoom button if zoomed
-                if (scale > 1f) {
-                    FloatingActionButton(
-                        onClick = {
-                            scale = 1f
-                            panOffset = Offset.Zero
-                        },
-                        modifier = Modifier.size(52.dp),
-                        containerColor = MaterialTheme.colorScheme.surfaceVariant,
-                        contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
-                        shape = CircleShape
-                    ) {
-                        Icon(Icons.Default.ZoomOutMap, contentDescription = "Reset Zoom")
-                    }
-                }
+                Icon(Icons.Default.ZoomIn, contentDescription = "Zoom In", modifier = Modifier.size(20.dp))
+            }
 
-                // Left Click Button
+            // Zoom Out / Reset Button
+            if (zoomScale > 1f) {
                 FloatingActionButton(
-                    onClick = { rdpEngine.handleLeftClick() },
-                    modifier = Modifier.size(52.dp),
-                    containerColor = MaterialTheme.colorScheme.primary,
-                    contentColor = MaterialTheme.colorScheme.onPrimary,
+                    onClick = {
+                        zoomScale = 1f
+                        panOffsetX = 0f
+                        panOffsetY = 0f
+                    },
+                    modifier = Modifier.size(46.dp),
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant,
+                    contentColor = MaterialTheme.colorScheme.onSurfaceVariant,
                     shape = CircleShape
                 ) {
-                    Text("L", fontWeight = FontWeight.Bold, fontSize = 18.sp)
+                    Icon(Icons.Default.ZoomOutMap, contentDescription = "Reset Zoom", modifier = Modifier.size(20.dp))
                 }
+            }
 
-                // Right Click Button
-                FloatingActionButton(
-                    onClick = { rdpEngine.handleRightClick() },
-                    modifier = Modifier.size(52.dp),
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                    shape = CircleShape
-                ) {
-                    Text("R", fontWeight = FontWeight.Bold, fontSize = 18.sp)
-                }
+            // Left Click Button (L)
+            FloatingActionButton(
+                onClick = { rdpEngine.handleLeftClick() },
+                modifier = Modifier.size(54.dp),
+                containerColor = MaterialTheme.colorScheme.primary,
+                contentColor = MaterialTheme.colorScheme.onPrimary,
+                shape = CircleShape
+            ) {
+                Text("L", fontWeight = FontWeight.Bold, fontSize = 20.sp)
+            }
+
+            // Double Click Button (2x)
+            FloatingActionButton(
+                onClick = { rdpEngine.handleDoubleClick() },
+                modifier = Modifier.size(46.dp),
+                containerColor = MaterialTheme.colorScheme.primaryContainer,
+                contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                shape = CircleShape
+            ) {
+                Text("2x", fontWeight = FontWeight.Bold, fontSize = 15.sp)
+            }
+
+            // Right Click Button (R)
+            FloatingActionButton(
+                onClick = { rdpEngine.handleRightClick() },
+                modifier = Modifier.size(54.dp),
+                containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                shape = CircleShape
+            ) {
+                Text("R", fontWeight = FontWeight.Bold, fontSize = 20.sp)
             }
         }
     }
 
-    // Send Text / Paste modal
+    // Send Text Modal
     if (showSendTextDialog) {
         AlertDialog(
             onDismissRequest = { showSendTextDialog = false },
@@ -512,14 +726,14 @@ fun RdpSessionScreen(
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(10.dp)) {
                     Text(
-                        text = "Введите текст или команду для отправки в активное окно Windows / PowerShell:",
+                        text = "Введите текст, пароль или команду для вставки в Windows / PowerShell:",
                         style = MaterialTheme.typography.bodyMedium
                     )
                     OutlinedTextField(
                         value = sendTextInput,
                         onValueChange = { sendTextInput = it },
                         modifier = Modifier.fillMaxWidth(),
-                        placeholder = { Text("Например: Get-Process, ipconfig...") },
+                        placeholder = { Text("Например: ipconfig, whoami, Get-Process...") },
                         singleLine = false,
                         maxLines = 3,
                         trailingIcon = {

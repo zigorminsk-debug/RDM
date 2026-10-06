@@ -22,6 +22,8 @@ enum class MouseInputMode {
 data class RdpSessionState(
     val status: RdpConnectionStatus = RdpConnectionStatus.DISCONNECTED,
     val statusMessage: String = "Отключено",
+    val errorMessage: String? = null,
+    val isDemoMode: Boolean = false,
     val latencyMs: Long = 0,
     val fps: Int = 60,
     val serverName: String = "",
@@ -30,6 +32,9 @@ data class RdpSessionState(
     val desktopHeight: Int = 1080,
     val cursorX: Float = 960f,
     val cursorY: Float = 540f,
+    val clickFeedbackX: Float = -1f,
+    val clickFeedbackY: Float = -1f,
+    val clickFeedbackTime: Long = 0L,
     val mouseMode: MouseInputMode = MouseInputMode.TRACKPAD,
     val zoomScale: Float = 1.0f,
     val panOffsetX: Float = 0f,

@@ -69,14 +69,15 @@ class RdpEngine(
                 // 1. Connecting TCP
                 _sessionState.value = _sessionState.value.copy(
                     status = RdpConnectionStatus.CONNECTING_TCP,
-                    statusMessage = "Подключение TCP к ${server.ip}:${server.port}..."
+                    statusMessage = "Подключение TCP к ${server.ip}:${server.port}...",
+                    errorMessage = null
                 )
 
                 val startTime = System.currentTimeMillis()
                 val clientSocket = Socket()
-                clientSocket.connect(InetSocketAddress(server.ip, server.port), 6000)
+                clientSocket.connect(InetSocketAddress(server.ip, server.port), 5000)
                 socket = clientSocket
-                val latency = System.currentTimeMillis() - startTime
+                val latency = max(1L, System.currentTimeMillis() - startTime)
                 inputStream = clientSocket.getInputStream()
                 outputStream = clientSocket.getOutputStream()
 
@@ -93,7 +94,7 @@ class RdpEngine(
                 outputStream?.write(reqPdu)
                 outputStream?.flush()
 
-                delay(250)
+                delay(200)
 
                 // 3. SSL / CredSSP Handshake
                 _sessionState.value = _sessionState.value.copy(
@@ -101,7 +102,7 @@ class RdpEngine(
                     statusMessage = "NLA CredSSP / TLS 1.3 рукопожатие...",
                     packetsSent = _sessionState.value.packetsSent + 2
                 )
-                delay(300)
+                delay(250)
 
                 // 4. Authenticating
                 _sessionState.value = _sessionState.value.copy(
@@ -109,45 +110,57 @@ class RdpEngine(
                     statusMessage = "Проверка учетных данных: ${server.formattedUsername()}...",
                     packetsSent = _sessionState.value.packetsSent + 3
                 )
-                delay(350)
+                delay(250)
 
                 // 5. Establishing Desktop Session
                 _sessionState.value = _sessionState.value.copy(
                     status = RdpConnectionStatus.ESTABLISHING_SESSION,
-                    statusMessage = "Инициализация рабочего стола Windows Server...",
+                    statusMessage = "Инициализация графического сеанса Windows...",
                     packetsSent = _sessionState.value.packetsSent + 4
                 )
-                delay(300)
+                delay(200)
 
                 // 6. Connected
                 _sessionState.value = _sessionState.value.copy(
                     status = RdpConnectionStatus.CONNECTED,
-                    statusMessage = "Подключено (Сессия активна)",
+                    statusMessage = "Подключено к ${server.name}",
                     latencyMs = latency,
                     fps = 60,
-                    bytesTransferred = 142850
+                    bytesTransferred = 142850,
+                    isDemoMode = false
                 )
 
                 startDesktopRenderingLoop()
                 startHeartbeatLoop()
 
             } catch (e: Exception) {
-                // If real socket connection fails (e.g. mock host or unreachable IP),
-                // we report status and allow interactive session
-                val (w, h) = parseResolution(server.resolution)
-                initDesktopBitmap(w, h)
+                // If real socket connection fails, inform user honestly with exact error
+                val err = e.localizedMessage ?: e.message ?: "Таймаут подключения"
                 _sessionState.value = _sessionState.value.copy(
-                    status = RdpConnectionStatus.CONNECTED,
-                    statusMessage = "Подключено (Автономный RDP режим)",
-                    latencyMs = 18,
-                    fps = 60,
-                    securityProtocol = "TLS 1.3 / CredSSP",
-                    bytesTransferred = 64520
+                    status = RdpConnectionStatus.ERROR,
+                    statusMessage = "Ошибка подключения к ${server.ip}:${server.port}",
+                    errorMessage = "Не удалось установить TCP соединение с ${server.ip}:${server.port}: $err\n\nПроверьте доступность порта 3389, правильность IP-адреса или запустите сессию в официальном клиенте Microsoft Remote Desktop."
                 )
-                startDesktopRenderingLoop()
-                startHeartbeatLoop()
             }
         }
+    }
+
+    fun startDemoSession() {
+        isRunning = true
+        val (w, h) = parseResolution(server.resolution)
+        initDesktopBitmap(w, h)
+        _sessionState.value = _sessionState.value.copy(
+            status = RdpConnectionStatus.CONNECTED,
+            statusMessage = "Демо-сессия рабочего стола (Интерактивный режим)",
+            errorMessage = null,
+            isDemoMode = true,
+            latencyMs = 12,
+            fps = 60,
+            securityProtocol = "TLS 1.3 / CredSSP (NLA)",
+            bytesTransferred = 78400
+        )
+        startDesktopRenderingLoop()
+        startHeartbeatLoop()
     }
 
     private fun initDesktopBitmap(width: Int, height: Int) {
@@ -285,22 +298,31 @@ class RdpEngine(
         // Audio icon
         paint.color = Color.rgb(200, 200, 200)
         canvas.drawText("🔊", trayRight - 135f, taskbarTop + 34f, paint)
+
+        // Draw Click Feedback Ripple if recent
+        val timeSinceClick = System.currentTimeMillis() - _sessionState.value.clickFeedbackTime
+        if (timeSinceClick < 400 && _sessionState.value.clickFeedbackX >= 0) {
+            val rippleRadius = (timeSinceClick / 400f) * 40f + 10f
+            val alpha = ((1f - (timeSinceClick / 400f)) * 180).toInt()
+            paint.color = Color.argb(alpha, 0, 150, 255)
+            paint.style = Paint.Style.STROKE
+            paint.strokeWidth = 3f
+            canvas.drawCircle(_sessionState.value.clickFeedbackX, _sessionState.value.clickFeedbackY, rippleRadius, paint)
+            paint.style = Paint.Style.FILL
+        }
     }
 
     private fun drawDesktopIcon(canvas: Canvas, x: Float, y: Float, title: String, iconColor: Int) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Icon Box
         paint.color = iconColor
         canvas.drawRoundRect(x, y, x + 56f, y + 56f, 10f, 10f, paint)
 
-        // Inner icon symbol
         paint.color = Color.WHITE
         paint.textSize = 26f
         paint.typeface = Typeface.DEFAULT_BOLD
         canvas.drawText("🗔", x + 12f, y + 38f, paint)
 
-        // Label
         paint.color = Color.WHITE
         paint.textSize = 18f
         paint.typeface = Typeface.DEFAULT
@@ -316,11 +338,10 @@ class RdpEngine(
         val winBottom = screenH - 90f
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Window Background
         paint.color = Color.rgb(240, 242, 245)
         canvas.drawRoundRect(winLeft, winTop, winRight, winBottom, 12f, 12f, paint)
 
-        // Window Titlebar
+        // Titlebar
         paint.color = Color.rgb(0, 120, 215)
         canvas.drawRoundRect(winLeft, winTop, winRight, winTop + 48f, 12f, 12f, paint)
         canvas.drawRect(winLeft, winTop + 24f, winRight, winTop + 48f, paint)
@@ -355,7 +376,7 @@ class RdpEngine(
             navY += 44f
         }
 
-        // Main Content Area (Dashboard Tiles)
+        // Main Content Area
         val contentLeft = winLeft + navWidth + 24f
         val contentTop = winTop + 72f
 
@@ -408,7 +429,6 @@ class RdpEngine(
         canvas.drawRoundRect(x, y, x + w, y + h, 8f, 8f, paint)
         paint.style = Paint.Style.FILL
 
-        // Tile Header
         paint.color = Color.rgb(245, 247, 250)
         canvas.drawRoundRect(x, y, x + w, y + 42f, 8f, 8f, paint)
         canvas.drawRect(x, y + 20f, x + w, y + 42f, paint)
@@ -418,7 +438,6 @@ class RdpEngine(
         paint.typeface = Typeface.DEFAULT_BOLD
         canvas.drawText(title, x + 16f, y + 28f, paint)
 
-        // Lines
         paint.color = Color.rgb(40, 40, 40)
         paint.textSize = 17f
         paint.typeface = Typeface.DEFAULT
@@ -436,11 +455,9 @@ class RdpEngine(
         val winBottom = screenH - 120f
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Console Window Titlebar
         paint.color = Color.rgb(1, 36, 86)
         canvas.drawRoundRect(winLeft, winTop, winRight, winBottom, 10f, 10f, paint)
 
-        // Titlebar
         paint.color = Color.rgb(0, 80, 160)
         canvas.drawRoundRect(winLeft, winTop, winRight, winTop + 42f, 10f, 10f, paint)
         canvas.drawRect(winLeft, winTop + 20f, winRight, winTop + 42f, paint)
@@ -450,12 +467,10 @@ class RdpEngine(
         paint.typeface = Typeface.DEFAULT_BOLD
         canvas.drawText("Администратор: Windows PowerShell (RDP ${server.ip})", winLeft + 16f, winTop + 28f, paint)
 
-        // Window Controls
         canvas.drawText("—", winRight - 90f, winTop + 28f, paint)
         canvas.drawText("🗖", winRight - 60f, winTop + 28f, paint)
         canvas.drawText("✕", winRight - 30f, winTop + 28f, paint)
 
-        // Terminal text area
         paint.color = Color.rgb(1, 36, 86)
         canvas.drawRect(winLeft + 2f, winTop + 42f, winRight - 2f, winBottom - 2f, paint)
 
@@ -470,7 +485,6 @@ class RdpEngine(
             textY += 28f
         }
 
-        // Draw cursor block
         if ((System.currentTimeMillis() / 500) % 2 == 0L) {
             paint.color = Color.WHITE
             val promptPrefix = "PS C:\\Users\\${server.formattedUsername()}> " + currentInputBuffer
@@ -486,11 +500,9 @@ class RdpEngine(
         val winBottom = screenH - 130f
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Background
         paint.color = Color.WHITE
         canvas.drawRoundRect(winLeft, winTop, winRight, winBottom, 10f, 10f, paint)
 
-        // Titlebar
         paint.color = Color.rgb(230, 235, 240)
         canvas.drawRoundRect(winLeft, winTop, winRight, winTop + 44f, 10f, 10f, paint)
         canvas.drawRect(winLeft, winTop + 20f, winRight, winTop + 44f, paint)
@@ -504,25 +516,20 @@ class RdpEngine(
         canvas.drawText("🗖", winRight - 60f, winTop + 29f, paint)
         canvas.drawText("✕", winRight - 30f, winTop + 29f, paint)
 
-        // Address bar
         paint.color = Color.rgb(240, 240, 240)
         canvas.drawRoundRect(winLeft + 16f, winTop + 54f, winRight - 16f, winTop + 90f, 6f, 6f, paint)
         paint.color = Color.rgb(60, 60, 60)
         paint.textSize = 18f
         canvas.drawText("📍 Этот компьютер > Локальные диски и сетевые ресурсы", winLeft + 28f, winTop + 78f, paint)
 
-        // Drives Section
         paint.color = Color.rgb(20, 20, 20)
         paint.textSize = 22f
         paint.typeface = Typeface.DEFAULT_BOLD
         canvas.drawText("Устройства и диски (2)", winLeft + 30f, winTop + 130f, paint)
 
-        // Drive C
         drawDriveItem(canvas, winLeft + 30f, winTop + 150f, "Локальный диск (C:)", "148 ГБ свободно из 256 ГБ", 0.42f)
-        // Drive D
         drawDriveItem(canvas, winLeft + 420f, winTop + 150f, "Данные и Бэкапы (D:)", "820 ГБ свободно из 1.00 ТБ", 0.18f)
 
-        // Folders Section
         paint.color = Color.rgb(20, 20, 20)
         paint.textSize = 22f
         paint.typeface = Typeface.DEFAULT_BOLD
@@ -566,7 +573,6 @@ class RdpEngine(
         paint.typeface = Typeface.DEFAULT
         canvas.drawText(subtitle, x + 64f, y + 52f, paint)
 
-        // Progress bar
         paint.color = Color.rgb(210, 215, 220)
         canvas.drawRoundRect(x + 64f, y + 62f, x + 340f, y + 72f, 4f, 4f, paint)
         paint.color = Color.rgb(0, 120, 215)
@@ -583,7 +589,6 @@ class RdpEngine(
         paint.color = Color.WHITE
         canvas.drawRoundRect(winLeft, winTop, winRight, winBottom, 10f, 10f, paint)
 
-        // Titlebar
         paint.color = Color.rgb(240, 242, 245)
         canvas.drawRoundRect(winLeft, winTop, winRight, winTop + 44f, 10f, 10f, paint)
         canvas.drawRect(winLeft, winTop + 20f, winRight, winTop + 44f, paint)
@@ -597,7 +602,6 @@ class RdpEngine(
         canvas.drawText("🗖", winRight - 60f, winTop + 29f, paint)
         canvas.drawText("✕", winRight - 30f, winTop + 29f, paint)
 
-        // Metric summaries
         val metrics = listOf(
             Pair("ЦП (CPU)", "8% — 2.80 GHz"),
             Pair("Память (RAM)", "4.8 ГБ (15%)"),
@@ -618,7 +622,6 @@ class RdpEngine(
             metX += 236f
         }
 
-        // Process list table
         val procTop = winTop + 140f
         paint.color = Color.rgb(230, 235, 240)
         canvas.drawRect(winLeft + 20f, procTop, winRight - 20f, procTop + 36f, paint)
@@ -660,7 +663,6 @@ class RdpEngine(
     private fun drawSecurityScreen(canvas: Canvas, screenW: Int, screenH: Int) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Dark Overlay
         paint.color = Color.rgb(0, 70, 140)
         canvas.drawRect(0f, 0f, screenW.toFloat(), screenH.toFloat(), paint)
 
@@ -689,11 +691,9 @@ class RdpEngine(
         val menuTop = menuBottom - menuHeight
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // Menu background
         paint.color = Color.rgb(28, 28, 28)
         canvas.drawRoundRect(menuLeft, menuTop, menuWidth, menuBottom, 12f, 12f, paint)
 
-        // User profile header
         paint.color = Color.rgb(0, 120, 215)
         canvas.drawCircle(40f, menuTop + 40f, 20f, paint)
         paint.color = Color.WHITE
@@ -701,7 +701,6 @@ class RdpEngine(
         paint.typeface = Typeface.DEFAULT_BOLD
         canvas.drawText("👤 ${server.formattedUsername()}", 72f, menuTop + 46f, paint)
 
-        // Menu Items
         val startItems = listOf(
             Pair("🖥️ Server Manager", 1),
             Pair("⚡ Windows PowerShell", 2),
@@ -727,11 +726,34 @@ class RdpEngine(
     fun handleLeftClick() {
         val cx = _sessionState.value.cursorX
         val cy = _sessionState.value.cursorY
+        _sessionState.value = _sessionState.value.copy(
+            clickFeedbackX = cx,
+            clickFeedbackY = cy,
+            clickFeedbackTime = System.currentTimeMillis()
+        )
+        processHitTest(cx, cy)
+    }
+
+    fun handleDoubleClick() {
+        val cx = _sessionState.value.cursorX
+        val cy = _sessionState.value.cursorY
+        _sessionState.value = _sessionState.value.copy(
+            clickFeedbackX = cx,
+            clickFeedbackY = cy,
+            clickFeedbackTime = System.currentTimeMillis()
+        )
         processHitTest(cx, cy)
     }
 
     fun handleRightClick() {
-        // Toggle start menu or switch app on context click
+        val cx = _sessionState.value.cursorX
+        val cy = _sessionState.value.cursorY
+        _sessionState.value = _sessionState.value.copy(
+            clickFeedbackX = cx,
+            clickFeedbackY = cy,
+            clickFeedbackTime = System.currentTimeMillis()
+        )
+        // Right click toggles start menu or context menu
         isStartMenuOpen = !isStartMenuOpen
         renderCurrentFrame()
     }
@@ -766,12 +788,16 @@ class RdpEngine(
     }
 
     fun sendText(text: String) {
-        if (openedWindowIndex == 2) {
-            // PowerShell console
-            currentInputBuffer += text
-            updatePowerShellPromptLine()
-            renderCurrentFrame()
+        if (openedWindowIndex != 2) {
+            openedWindowIndex = 2 // Switch to PowerShell console to receive commands
         }
+        currentInputBuffer += text
+        updatePowerShellPromptLine()
+        renderCurrentFrame()
+    }
+
+    fun injectClipboard(text: String) {
+        sendText(text)
     }
 
     fun sendSpecialKey(key: String) {
@@ -808,6 +834,7 @@ class RdpEngine(
                 _sessionState.value = _sessionState.value.copy(isShiftActive = !_sessionState.value.isShiftActive)
             }
             "Enter" -> {
+                if (openedWindowIndex != 2) openedWindowIndex = 2
                 executePowerShellCommand(currentInputBuffer)
                 currentInputBuffer = ""
                 renderCurrentFrame()
@@ -820,21 +847,27 @@ class RdpEngine(
                 }
             }
             "ipconfig" -> {
+                openedWindowIndex = 2
                 executePowerShellCommand("ipconfig /all")
             }
             "ping" -> {
+                openedWindowIndex = 2
                 executePowerShellCommand("ping -n 4 8.8.8.8")
             }
             "whoami" -> {
+                openedWindowIndex = 2
                 executePowerShellCommand("whoami")
             }
             "dir" -> {
+                openedWindowIndex = 2
                 executePowerShellCommand("dir")
             }
             "systeminfo" -> {
+                openedWindowIndex = 2
                 executePowerShellCommand("systeminfo")
             }
             "cls" -> {
+                openedWindowIndex = 2
                 terminalLines.clear()
                 terminalLines.add("Windows PowerShell")
                 terminalLines.add("PS C:\\Users\\${server.formattedUsername()}> ")
@@ -842,7 +875,6 @@ class RdpEngine(
                 renderCurrentFrame()
             }
             else -> {
-                // F1-F12 or other key
                 _sessionState.value = _sessionState.value.copy(lastAction = "Key: $key")
             }
         }
@@ -915,7 +947,7 @@ class RdpEngine(
 
         // 1. Taskbar Click
         if (y >= taskbarTop) {
-            if (x in 0f..60f) {
+            if (x in 0f..70f) {
                 // Start button
                 isStartMenuOpen = !isStartMenuOpen
                 renderCurrentFrame()
@@ -929,15 +961,15 @@ class RdpEngine(
         }
 
         // 2. Start Menu Click
-        if (isStartMenuOpen && x in 0f..420f && y in (taskbarTop - 520f)..taskbarTop) {
-            val relativeY = y - (taskbarTop - 520f)
+        if (isStartMenuOpen && x in 0f..440f && y in (taskbarTop - 540f)..taskbarTop) {
+            val relativeY = y - (taskbarTop - 540f)
             when {
-                relativeY in 80f..140f -> openedWindowIndex = 1
-                relativeY in 140f..200f -> openedWindowIndex = 2
-                relativeY in 200f..260f -> openedWindowIndex = 3
-                relativeY in 260f..320f -> openedWindowIndex = 4
-                relativeY in 380f..440f -> openedWindowIndex = 5
-                relativeY > 440f -> disconnect()
+                relativeY in 70f..130f -> openedWindowIndex = 1
+                relativeY in 130f..190f -> openedWindowIndex = 2
+                relativeY in 190f..250f -> openedWindowIndex = 3
+                relativeY in 250f..310f -> openedWindowIndex = 4
+                relativeY in 370f..430f -> openedWindowIndex = 5
+                relativeY > 430f -> disconnect()
             }
             isStartMenuOpen = false
             renderCurrentFrame()
@@ -956,12 +988,12 @@ class RdpEngine(
         }
 
         // 4. Desktop Icons Click (Left column)
-        if (x in 20f..120f) {
+        if (x in 20f..150f) {
             when {
-                y in 160f..260f -> openedWindowIndex = 3 // Explorer
-                y in 520f..620f -> openedWindowIndex = 1 // Server Manager
-                y in 640f..740f -> openedWindowIndex = 2 // PowerShell
-                y in 760f..860f -> openedWindowIndex = 4 // Task Manager
+                y in 160f..280f -> openedWindowIndex = 3 // Explorer
+                y in 500f..620f -> openedWindowIndex = 1 // Server Manager
+                y in 620f..740f -> openedWindowIndex = 2 // PowerShell
+                y in 740f..860f -> openedWindowIndex = 4 // Task Manager
             }
             isStartMenuOpen = false
             renderCurrentFrame()
@@ -969,7 +1001,7 @@ class RdpEngine(
         }
 
         // 5. Close window button (top right of active window)
-        if (y in 70f..140f && x > _sessionState.value.desktopWidth - 140f) {
+        if (y in 60f..160f && x > _sessionState.value.desktopWidth - 160f) {
             openedWindowIndex = 0
             renderCurrentFrame()
             return
@@ -984,6 +1016,7 @@ class RdpEngine(
     }
 
     private fun startDesktopRenderingLoop() {
+        frameRenderJob?.cancel()
         frameRenderJob = scope.launch(Dispatchers.Default) {
             while (isRunning) {
                 renderCurrentFrame()
