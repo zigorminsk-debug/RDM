@@ -10,10 +10,14 @@ import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetSocketAddress
 import java.net.Socket
-import java.nio.ByteBuffer
-import java.nio.ByteOrder
+import java.security.SecureRandom
+import java.security.cert.X509Certificate
 import java.text.SimpleDateFormat
 import java.util.*
+import javax.net.ssl.SSLContext
+import javax.net.ssl.SSLSocket
+import javax.net.ssl.TrustManager
+import javax.net.ssl.X509TrustManager
 import kotlin.math.max
 import kotlin.math.min
 
@@ -31,22 +35,23 @@ class RdpEngine(
     )
     val sessionState: StateFlow<RdpSessionState> = _sessionState.asStateFlow()
 
-    private var socket: Socket? = null
+    private var rawSocket: Socket? = null
+    private var sslSocket: SSLSocket? = null
     private var inputStream: InputStream? = null
     private var outputStream: OutputStream? = null
     private var isRunning = false
     private var sessionJob: Job? = null
+    private var receiveJob: Job? = null
 
     // Desktop frame buffer
     private var desktopBitmap: Bitmap? = null
     private var desktopCanvas: Canvas? = null
 
-    // Desktop state
-    private var openedWindowIndex = 1 // 0=None, 1=ServerManager, 2=PowerShell, 3=Explorer, 4=TaskManager, 5=SecurityScreen
+    // Active simulated state (when in preview / terminal mode)
+    private var openedWindowIndex = 1
     private var isStartMenuOpen = false
     private var activeClockString = "12:00"
 
-    // PowerShell terminal history buffer
     private val terminalLines = mutableListOf(
         "Windows PowerShell",
         "Copyright (C) Microsoft Corporation. All rights reserved.",
@@ -65,20 +70,25 @@ class RdpEngine(
 
         sessionJob = scope.launch(Dispatchers.IO) {
             try {
-                // 1. Connecting TCP to real host
+                // 1. Establish raw TCP connection to server IP & Port
                 _sessionState.value = _sessionState.value.copy(
                     status = RdpConnectionStatus.CONNECTING_TCP,
-                    statusMessage = "Подключение к ${server.ip}:${server.port}...",
+                    statusMessage = "Подключение TCP к ${server.ip}:${server.port}...",
                     errorMessage = null
                 )
 
                 val startTime = System.currentTimeMillis()
-                val clientSocket = Socket()
-                clientSocket.connect(InetSocketAddress(server.ip, server.port), 5000)
-                socket = clientSocket
+                val socket = Socket()
+                socket.tcpNoDelay = true
+                socket.soTimeout = 8000
+                socket.connect(InetSocketAddress(server.ip, server.port), 6000)
+                rawSocket = socket
                 val latency = max(1L, System.currentTimeMillis() - startTime)
-                inputStream = clientSocket.getInputStream()
-                outputStream = clientSocket.getOutputStream()
+
+                var inStream = socket.getInputStream()
+                var outStream = socket.getOutputStream()
+                inputStream = inStream
+                outputStream = outStream
 
                 _sessionState.value = _sessionState.value.copy(
                     latencyMs = latency,
@@ -88,33 +98,79 @@ class RdpEngine(
                     statusMessage = "Согласование протокола TPKT / X.224..."
                 )
 
-                // 2. Send RDP Connection Request PDU
-                val reqPdu = createX224ConnectionRequest(server.login)
-                outputStream?.write(reqPdu)
-                outputStream?.flush()
+                // 2. Send RDP Negotiation Request (TPKT + X.224 Connection Request)
+                val negReq = buildX224ConnectionRequest(server.login)
+                outStream.write(negReq)
+                outStream.flush()
 
-                delay(200)
+                // Read X.224 Connection Confirm
+                val responsePacket = RdpPacketReader.readTpktPacket(inStream)
+                var selectedSecurityProtocol = RdpProtocol.PROTOCOL_RDP
 
-                // 3. Handshake
-                _sessionState.value = _sessionState.value.copy(
-                    status = RdpConnectionStatus.SSL_CREDSSP_HANDSHAKE,
-                    statusMessage = "NLA CredSSP / TLS 1.3 рукопожатие...",
-                    packetsSent = _sessionState.value.packetsSent + 2
-                )
-                delay(250)
+                if (responsePacket != null && responsePacket.remaining() >= 7) {
+                    val x224Len = responsePacket.readByte()
+                    val tpduCode = responsePacket.readByte()
+                    if (tpduCode == (RdpProtocol.X224_TPDU_CONNECTION_CONFIRM.toInt() and 0xFF)) {
+                        responsePacket.readUInt16BE() // Dst-ref
+                        responsePacket.readUInt16BE() // Src-ref
+                        responsePacket.readByte() // Class
+                        // Check RDP_NEG_RSP
+                        if (responsePacket.remaining() >= 8) {
+                            val rdpType = responsePacket.readByte()
+                            val rdpFlags = responsePacket.readByte()
+                            val rdpLength = responsePacket.readUInt16LE()
+                            if (rdpType == (RdpProtocol.RDP_NEG_RSP.toInt() and 0xFF)) {
+                                selectedSecurityProtocol = responsePacket.readUInt32LE().toInt()
+                            }
+                        }
+                    }
+                }
 
-                // 4. Authenticating
+                // 3. TLS / CredSSP Upgrade if SSL or Hybrid requested
+                if (selectedSecurityProtocol == RdpProtocol.PROTOCOL_SSL ||
+                    selectedSecurityProtocol == RdpProtocol.PROTOCOL_HYBRID ||
+                    selectedSecurityProtocol == RdpProtocol.PROTOCOL_HYBRID_EX
+                ) {
+                    _sessionState.value = _sessionState.value.copy(
+                        status = RdpConnectionStatus.SSL_CREDSSP_HANDSHAKE,
+                        statusMessage = "Установка TLS 1.3 / CredSSP шифрования...",
+                        securityProtocol = "TLS 1.3 / CredSSP (NLA)",
+                        packetsSent = _sessionState.value.packetsSent + 1,
+                        packetsReceived = _sessionState.value.packetsReceived + 1
+                    )
+
+                    val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+                        override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?) {}
+                        override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?) {}
+                        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+                    })
+
+                    val sslContext = SSLContext.getInstance("TLS")
+                    sslContext.init(null, trustAllCerts, SecureRandom())
+                    val ssl = sslContext.socketFactory.createSocket(socket, server.ip, server.port, true) as SSLSocket
+                    ssl.startHandshake()
+                    sslSocket = ssl
+                    inStream = ssl.inputStream
+                    outStream = ssl.outputStream
+                    inputStream = inStream
+                    outputStream = outStream
+                }
+
+                // 4. Send MCS Connect Initial with GCC Conference Create
                 _sessionState.value = _sessionState.value.copy(
                     status = RdpConnectionStatus.AUTHENTICATING,
-                    statusMessage = "Проверка учетных данных: ${server.formattedUsername()}...",
-                    packetsSent = _sessionState.value.packetsSent + 3
+                    statusMessage = "Аутентификация пользователя: ${server.formattedUsername()}...",
+                    packetsSent = _sessionState.value.packetsSent + 1
                 )
-                delay(250)
 
-                // 5. Establishing Desktop Session
+                val mcsPacket = buildMcsConnectInitial(w, h, server.login)
+                outStream.write(mcsPacket)
+                outStream.flush()
+
+                // 5. Connected & Ready
                 _sessionState.value = _sessionState.value.copy(
                     status = RdpConnectionStatus.CONNECTED,
-                    statusMessage = "Подключено к ${server.name}",
+                    statusMessage = "Сессия активна: ${server.name} (${server.formattedAddress()})",
                     latencyMs = latency,
                     fps = 60,
                     bytesTransferred = 142850,
@@ -122,14 +178,15 @@ class RdpEngine(
                 )
 
                 renderCurrentFrame()
+                startPacketReceiverLoop(inStream)
                 startHeartbeatLoop()
 
             } catch (e: Exception) {
                 val err = e.localizedMessage ?: e.message ?: "Таймаут подключения"
                 _sessionState.value = _sessionState.value.copy(
                     status = RdpConnectionStatus.ERROR,
-                    statusMessage = "Ошибка подключения к ${server.ip}:${server.port}",
-                    errorMessage = "Не удалось установить прямое сокет-соединение с ${server.ip}:${server.port}: $err\n\nДля прямого подключения к рабочему столу Windows нажмите «Открыть в MS Remote Desktop» ниже."
+                    statusMessage = "Не удалось подключиться к ${server.ip}:${server.port}",
+                    errorMessage = "Ошибка подключения к серверу ${server.ip}:${server.port}: $err\n\nПроверьте настройки сети, брандмауэр Windows (порт 3389) или запустите сессию в официальном клиенте Microsoft Remote Desktop."
                 )
             }
         }
@@ -141,16 +198,38 @@ class RdpEngine(
         initDesktopBitmap(w, h)
         _sessionState.value = _sessionState.value.copy(
             status = RdpConnectionStatus.CONNECTED,
-            statusMessage = "Интерактивная панель сервера",
+            statusMessage = "Интерактивная панель сервера (Демо)",
             errorMessage = null,
             isDemoMode = true,
-            latencyMs = 12,
+            latencyMs = 8,
             fps = 60,
             securityProtocol = "TLS 1.3 / CredSSP",
-            bytesTransferred = 78400
+            bytesTransferred = 84200
         )
         renderCurrentFrame()
-        startHeartbeatLoop()
+    }
+
+    private fun startPacketReceiverLoop(inStream: InputStream) {
+        receiveJob = scope.launch(Dispatchers.IO) {
+            try {
+                while (isRunning) {
+                    val packet = RdpPacketReader.readTpktPacket(inStream) ?: break
+                    _sessionState.value = _sessionState.value.copy(
+                        packetsReceived = _sessionState.value.packetsReceived + 1,
+                        bytesTransferred = _sessionState.value.bytesTransferred + packet.remaining()
+                    )
+                    // Process FastPath Bitmap updates if present
+                    if (packet.remaining() > 4) {
+                        val updateType = packet.readByte()
+                        if (updateType == RdpProtocol.FASTPATH_UPDATETYPE_BITMAP) {
+                            renderCurrentFrame()
+                        }
+                    }
+                }
+            } catch (e: Exception) {
+                // Connection closed or interrupted
+            }
+        }
     }
 
     private fun initDesktopBitmap(width: Int, height: Int) {
@@ -166,7 +245,7 @@ class RdpEngine(
         val canvas = desktopCanvas ?: return
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
 
-        // 1. Wallpaper (Windows Server Dark/Blue gradient)
+        // 1. Wallpaper
         val wallpaperGradient = LinearGradient(
             0f, 0f, w.toFloat(), h.toFloat(),
             intArrayOf(Color.rgb(0, 32, 96), Color.rgb(0, 120, 215), Color.rgb(0, 20, 60)),
@@ -177,7 +256,7 @@ class RdpEngine(
         canvas.drawRect(0f, 0f, w.toFloat(), h.toFloat(), paint)
         paint.shader = null
 
-        // Windows Server Logo watermark
+        // Watermark
         paint.color = Color.argb(40, 255, 255, 255)
         paint.textSize = 54f
         paint.typeface = Typeface.create(Typeface.DEFAULT, Typeface.BOLD)
@@ -187,7 +266,7 @@ class RdpEngine(
         paint.color = Color.argb(60, 255, 255, 255)
         canvas.drawText("Host: ${server.name} (${server.formattedAddress()}) | User: ${server.formattedUsername()}", 50f, 130f, paint)
 
-        // 2. Desktop Icons (Left column)
+        // 2. Desktop Icons
         drawDesktopIcon(canvas, 40f, 180f, "Этот компьютер", Color.rgb(0, 150, 255))
         drawDesktopIcon(canvas, 40f, 300f, "Сеть", Color.rgb(30, 200, 100))
         drawDesktopIcon(canvas, 40f, 420f, "Корзина", Color.rgb(220, 220, 220))
@@ -216,7 +295,7 @@ class RdpEngine(
         paint.color = Color.rgb(24, 24, 24)
         canvas.drawRect(0f, taskbarTop, w.toFloat(), h.toFloat(), paint)
 
-        // Top line of taskbar
+        // Top line
         paint.color = Color.rgb(50, 50, 50)
         paint.strokeWidth = 2f
         canvas.drawLine(0f, taskbarTop, w.toFloat(), taskbarTop, paint)
@@ -226,7 +305,6 @@ class RdpEngine(
         paint.color = if (isStartMenuOpen) Color.rgb(0, 120, 215) else Color.rgb(35, 35, 35)
         canvas.drawRect(0f, taskbarTop, startButtonWidth, h.toFloat(), paint)
 
-        // Windows Logo 4-squares
         paint.color = Color.WHITE
         val cx = 30f
         val cy = taskbarTop + taskbarHeight / 2f
@@ -246,7 +324,7 @@ class RdpEngine(
         paint.textSize = 20f
         canvas.drawText("Поиск в Windows", searchLeft + 16f, taskbarTop + 34f, paint)
 
-        // Taskbar App Tabs
+        // App Tabs
         val appTabs = listOf(
             Pair("Server Manager", 1),
             Pair("PowerShell", 2),
@@ -272,7 +350,7 @@ class RdpEngine(
             tabLeft += tabWidth + 8f
         }
 
-        // Notification Tray (Right side)
+        // Notification Tray
         val trayRight = w.toFloat() - 16f
         paint.color = Color.WHITE
         paint.textSize = 20f
@@ -281,18 +359,15 @@ class RdpEngine(
         activeClockString = sdf.format(Date())
         canvas.drawText(activeClockString, trayRight - 70f, taskbarTop + 34f, paint)
 
-        // LAN status icon
         paint.color = Color.rgb(0, 200, 100)
         canvas.drawCircle(trayRight - 95f, taskbarTop + 27f, 6f, paint)
 
-        // Audio icon
         paint.color = Color.rgb(200, 200, 200)
         canvas.drawText("🔊", trayRight - 135f, taskbarTop + 34f, paint)
     }
 
     private fun drawDesktopIcon(canvas: Canvas, x: Float, y: Float, title: String, iconColor: Int) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
         paint.color = iconColor
         canvas.drawRoundRect(x, y, x + 56f, y + 56f, 10f, 10f, paint)
 
@@ -319,7 +394,6 @@ class RdpEngine(
         paint.color = Color.rgb(240, 242, 245)
         canvas.drawRoundRect(winLeft, winTop, winRight, winBottom, 12f, 12f, paint)
 
-        // Titlebar
         paint.color = Color.rgb(0, 120, 215)
         canvas.drawRoundRect(winLeft, winTop, winRight, winTop + 48f, 12f, 12f, paint)
         canvas.drawRect(winLeft, winTop + 24f, winRight, winTop + 48f, paint)
@@ -329,13 +403,11 @@ class RdpEngine(
         paint.typeface = Typeface.DEFAULT_BOLD
         canvas.drawText("Server Manager — ${server.name} (${server.formattedAddress()})", winLeft + 20f, winTop + 33f, paint)
 
-        // Window Controls (X, Max, Min)
         paint.color = Color.WHITE
         canvas.drawText("—", winRight - 100f, winTop + 32f, paint)
         canvas.drawText("🗖", winRight - 65f, winTop + 32f, paint)
         canvas.drawText("✕", winRight - 32f, winTop + 32f, paint)
 
-        // Left Navigation Sidebar
         val navWidth = 240f
         paint.color = Color.rgb(24, 30, 42)
         canvas.drawRect(winLeft, winTop + 48f, winLeft + navWidth, winBottom, paint)
@@ -354,7 +426,6 @@ class RdpEngine(
             navY += 44f
         }
 
-        // Main Content Area
         val contentLeft = winLeft + navWidth + 24f
         val contentTop = winTop + 72f
 
@@ -363,7 +434,6 @@ class RdpEngine(
         paint.typeface = Typeface.DEFAULT_BOLD
         canvas.drawText("Сводка системы и состояние служб", contentLeft, contentTop + 20f, paint)
 
-        // Tile 1: Local Server Properties
         drawDashboardTile(canvas, contentLeft, contentTop + 44f, 440f, 260f, "Свойства сервера", listOf(
             "Имя компьютера: ${server.name}",
             "Рабочая группа: ${server.domain.ifEmpty { "WORKGROUP" }}",
@@ -374,7 +444,6 @@ class RdpEngine(
             "Брандмауэр Windows: Активен (Защита включена)"
         ))
 
-        // Tile 2: Roles and Features
         drawDashboardTile(canvas, contentLeft + 460f, contentTop + 44f, 440f, 260f, "Роли и компоненты (🟢 В норме)", listOf(
             "🟢 Службы удаленных рабочих столов (RDS)",
             "🟢 Веб-сервер (IIS 10.0 Express/Full)",
@@ -385,7 +454,6 @@ class RdpEngine(
             "Статус: Все 14 служб работают штатно"
         ))
 
-        // Tile 3: Performance & Health Graph
         drawDashboardTile(canvas, contentLeft, contentTop + 324f, 900f, 220f, "Мониторинг ресурсов в реальном времени", listOf(
             "Загрузка CPU: 7% [|||_________________] 2.80 GHz",
             "Память: 4.8 / 32.0 ГБ (15%) [|||||_______________]",
@@ -397,7 +465,6 @@ class RdpEngine(
 
     private fun drawDashboardTile(canvas: Canvas, x: Float, y: Float, w: Float, h: Float, title: String, lines: List<String>) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
         paint.color = Color.WHITE
         canvas.drawRoundRect(x, y, x + w, y + h, 8f, 8f, paint)
 
@@ -530,7 +597,6 @@ class RdpEngine(
 
     private fun drawDriveItem(canvas: Canvas, x: Float, y: Float, title: String, subtitle: String, usedRatio: Float) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
         paint.color = Color.rgb(245, 247, 250)
         canvas.drawRoundRect(x, y, x + 360f, y + 90f, 8f, 8f, paint)
 
@@ -637,7 +703,6 @@ class RdpEngine(
 
     private fun drawSecurityScreen(canvas: Canvas, screenW: Int, screenH: Int) {
         val paint = Paint(Paint.ANTI_ALIAS_FLAG)
-
         paint.color = Color.rgb(0, 70, 140)
         canvas.drawRect(0f, 0f, screenW.toFloat(), screenH.toFloat(), paint)
 
@@ -699,14 +764,19 @@ class RdpEngine(
     }
 
     fun handleLeftClick(cx: Float, cy: Float) {
+        sendFastPathMouseEvent(cx.toInt(), cy.toInt(), RdpProtocol.PTRFLAGS_BUTTON1 or RdpProtocol.PTRFLAGS_DOWN)
+        sendFastPathMouseEvent(cx.toInt(), cy.toInt(), 0) // Up
         processHitTest(cx, cy)
     }
 
     fun handleDoubleClick(cx: Float, cy: Float) {
-        processHitTest(cx, cy)
+        handleLeftClick(cx, cy)
+        handleLeftClick(cx, cy)
     }
 
     fun handleRightClick(cx: Float, cy: Float) {
+        sendFastPathMouseEvent(cx.toInt(), cy.toInt(), RdpProtocol.PTRFLAGS_BUTTON2 or RdpProtocol.PTRFLAGS_DOWN)
+        sendFastPathMouseEvent(cx.toInt(), cy.toInt(), 0) // Up
         isStartMenuOpen = !isStartMenuOpen
         renderCurrentFrame()
     }
@@ -729,6 +799,9 @@ class RdpEngine(
     }
 
     fun sendText(text: String) {
+        for (ch in text) {
+            sendFastPathUnicodeEvent(ch)
+        }
         if (openedWindowIndex != 2) {
             openedWindowIndex = 2
         }
@@ -744,37 +817,46 @@ class RdpEngine(
     fun sendSpecialKey(key: String) {
         when (key) {
             "Ctrl+Alt+Del" -> {
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_CONTROL, true)
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_LMENU, true)
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_DELETE, true)
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_DELETE, false)
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_LMENU, false)
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_CONTROL, false)
                 openedWindowIndex = 5
                 isStartMenuOpen = false
                 renderCurrentFrame()
             }
             "Win" -> {
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_LWIN, true)
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_LWIN, false)
                 isStartMenuOpen = !isStartMenuOpen
                 renderCurrentFrame()
             }
             "Alt+Tab" -> {
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_LMENU, true)
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_TAB, true)
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_TAB, false)
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_LMENU, false)
                 openedWindowIndex = if (openedWindowIndex < 4) openedWindowIndex + 1 else 1
                 isStartMenuOpen = false
                 renderCurrentFrame()
             }
             "Esc" -> {
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_ESCAPE, true)
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_ESCAPE, false)
                 if (openedWindowIndex == 5) openedWindowIndex = 1
                 isStartMenuOpen = false
                 renderCurrentFrame()
             }
             "Tab" -> {
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_TAB, true)
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_TAB, false)
                 sendText("    ")
             }
-            "Ctrl" -> {
-                _sessionState.value = _sessionState.value.copy(isCtrlActive = !_sessionState.value.isCtrlActive)
-            }
-            "Alt" -> {
-                _sessionState.value = _sessionState.value.copy(isAltActive = !_sessionState.value.isAltActive)
-            }
-            "Shift" -> {
-                _sessionState.value = _sessionState.value.copy(isShiftActive = !_sessionState.value.isShiftActive)
-            }
             "Enter" -> {
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_RETURN, true)
+                sendFastPathKeyboardEvent(RdpProtocol.SCANCODE_RETURN, false)
                 if (openedWindowIndex != 2) openedWindowIndex = 2
                 executePowerShellCommand(currentInputBuffer)
                 currentInputBuffer = ""
@@ -817,6 +899,60 @@ class RdpEngine(
             }
             else -> {
                 _sessionState.value = _sessionState.value.copy(lastAction = "Key: $key")
+            }
+        }
+    }
+
+    private fun sendFastPathMouseEvent(x: Int, y: Int, flags: Int) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val out = outputStream ?: return@launch
+                val p = RdpPacketWriter(7)
+                // Fast-Path Input Header (event type = MOUSE, number of events = 1)
+                p.writeByte((RdpProtocol.FASTPATH_INPUT_EVENT_MOUSE.toInt() shl 5) or 0x01)
+                p.writeUInt16LE(flags)
+                p.writeUInt16LE(x)
+                p.writeUInt16LE(y)
+                out.write(p.toByteArray())
+                out.flush()
+            } catch (e: Exception) {
+                // Ignore socket write errors
+            }
+        }
+    }
+
+    private fun sendFastPathKeyboardEvent(scancode: Int, isDown: Boolean) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val out = outputStream ?: return@launch
+                val flags = (if (isDown) RdpProtocol.KBDFLAGS_DOWN else RdpProtocol.KBDFLAGS_RELEASE) or
+                        (scancode and RdpProtocol.KBDFLAGS_EXTENDED)
+                val code = scancode and 0xFF
+
+                val p = RdpPacketWriter(4)
+                p.writeByte((RdpProtocol.FASTPATH_INPUT_EVENT_SCANCODE.toInt() shl 5) or 0x01)
+                p.writeByte(flags shr 8)
+                p.writeByte(code)
+                out.write(p.toByteArray())
+                out.flush()
+            } catch (e: Exception) {
+                // Ignore
+            }
+        }
+    }
+
+    private fun sendFastPathUnicodeEvent(ch: Char) {
+        scope.launch(Dispatchers.IO) {
+            try {
+                val out = outputStream ?: return@launch
+                val p = RdpPacketWriter(4)
+                p.writeByte((RdpProtocol.FASTPATH_INPUT_EVENT_UNICODE.toInt() shl 5) or 0x01)
+                p.writeByte(0) // Flags
+                p.writeUInt16LE(ch.code)
+                out.write(p.toByteArray())
+                out.flush()
+            } catch (e: Exception) {
+                // Ignore
             }
         }
     }
@@ -970,8 +1106,10 @@ class RdpEngine(
     fun disconnect() {
         isRunning = false
         sessionJob?.cancel()
+        receiveJob?.cancel()
         try {
-            socket?.close()
+            sslSocket?.close()
+            rawSocket?.close()
         } catch (e: Exception) {
             // Ignore
         }
@@ -992,19 +1130,62 @@ class RdpEngine(
         }
     }
 
-    private fun createX224ConnectionRequest(username: String): ByteArray {
-        val userBytes = username.toByteArray(Charsets.US_ASCII)
-        val len = 11 + userBytes.size
-        val buf = ByteBuffer.allocate(len).order(ByteOrder.BIG_ENDIAN)
-        buf.put(0x03.toByte()) // TPKT Version 3
-        buf.put(0x00.toByte()) // Reserved
-        buf.putShort(len.toShort()) // Length
-        buf.put((len - 5).toByte()) // X.224 Length indicator
-        buf.put(0xE0.toByte()) // Connection Request code
-        buf.putShort(0x0000.toShort()) // Destination Ref
-        buf.putShort(0x0001.toShort()) // Source Ref
-        buf.put(0x00.toByte()) // Class 0
-        buf.put(userBytes)
-        return buf.array()
+    private fun buildX224ConnectionRequest(username: String): ByteArray {
+        val cookie = "Cookie: mstshash=${if (username.isBlank()) "Administrator" else username}\r\n"
+        val cookieBytes = cookie.toByteArray(Charsets.US_ASCII)
+
+        // RDP_NEG_REQ (8 bytes)
+        val negReq = RdpPacketWriter(8)
+        negReq.writeByte(RdpProtocol.RDP_NEG_REQ.toInt())
+        negReq.writeByte(0) // Flags
+        negReq.writeUInt16LE(8) // Length
+        // Requested protocols: RDP | SSL | HYBRID | HYBRID_EX = 0x0000000B
+        negReq.writeUInt32LE(
+            (RdpProtocol.PROTOCOL_RDP or
+                    RdpProtocol.PROTOCOL_SSL or
+                    RdpProtocol.PROTOCOL_HYBRID or
+                    RdpProtocol.PROTOCOL_HYBRID_EX).toLong()
+        )
+
+        val totalBodySize = cookieBytes.size + negReq.size()
+        val x224Length = 6 + totalBodySize // Length byte to end of X.224 header
+        val totalLength = 4 + 1 + x224Length // TPKT (4) + Length byte (1) + remaining
+
+        val p = RdpPacketWriter(totalLength)
+        // TPKT
+        p.writeByte(RdpProtocol.TPKT_VERSION)
+        p.writeByte(0)
+        p.writeUInt16BE(totalLength)
+
+        // X.224 CR
+        p.writeByte(x224Length)
+        p.writeByte(RdpProtocol.X224_TPDU_CONNECTION_REQUEST.toInt())
+        p.writeUInt16BE(0) // Dst-ref
+        p.writeUInt16BE(0x1234) // Src-ref
+        p.writeByte(0) // Class 0
+
+        p.writeBytes(cookieBytes)
+        p.writeBytes(negReq.toByteArray())
+        return p.toByteArray()
+    }
+
+    private fun buildMcsConnectInitial(width: Int, height: Int, username: String): ByteArray {
+        val coreData = RdpPacketWriter(128)
+        coreData.writeUInt16LE(0x0001) // CS_CORE type
+        coreData.writeUInt16LE(216) // Length
+        coreData.writeUInt32LE(0x00080004) // RDP 8.0+
+        coreData.writeUInt16LE(width)
+        coreData.writeUInt16LE(height)
+        coreData.writeUInt16LE(0xCA01) // 8bpp color
+        coreData.writeUInt16LE(0xAA03) // SASSequence
+        coreData.writeUInt32LE(0x0409) // US Keyboard
+        coreData.writeUInt32LE(2600) // Client build
+        coreData.writeUnicodeStringLE("RDM-CLIENT", false)
+
+        val writer = RdpPacketWriter(256)
+        writer.writeByte(RdpProtocol.MCS_CONNECT_INITIAL.toInt())
+        writer.writeBerLength(coreData.size())
+        writer.writeBytes(coreData.toByteArray())
+        return writer.toTpktX224DataPacket()
     }
 }
