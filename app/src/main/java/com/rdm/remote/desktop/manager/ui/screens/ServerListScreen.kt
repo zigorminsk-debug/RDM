@@ -26,7 +26,8 @@ import com.rdm.remote.desktop.manager.ui.viewmodel.MainViewModel
 fun ServerListScreen(
     clientId: Long,
     viewModel: MainViewModel,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onLaunchInApp: (ServerEntity) -> Unit
 ) {
     LaunchedEffect(clientId) {
         viewModel.selectClient(clientId)
@@ -215,6 +216,7 @@ fun ServerListScreen(
     launchingServer?.let { server ->
         RdpLaunchDialog(
             server = server,
+            onLaunchInApp = { onLaunchInApp(it) },
             onDismiss = { viewModel.closeRdpLaunchDialog() }
         )
     }

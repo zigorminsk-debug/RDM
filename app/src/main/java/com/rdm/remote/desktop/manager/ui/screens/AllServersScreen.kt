@@ -24,7 +24,8 @@ import com.rdm.remote.desktop.manager.ui.viewmodel.MainViewModel
 @Composable
 fun AllServersScreen(
     viewModel: MainViewModel,
-    onBackClick: () -> Unit
+    onBackClick: () -> Unit,
+    onLaunchInApp: (ServerEntity) -> Unit
 ) {
     val servers by viewModel.allServers.collectAsStateWithLifecycle()
     val searchQuery by viewModel.serverSearchQuery.collectAsStateWithLifecycle()
@@ -136,6 +137,7 @@ fun AllServersScreen(
     launchingServer?.let { server ->
         RdpLaunchDialog(
             server = server,
+            onLaunchInApp = { onLaunchInApp(it) },
             onDismiss = { viewModel.closeRdpLaunchDialog() }
         )
     }

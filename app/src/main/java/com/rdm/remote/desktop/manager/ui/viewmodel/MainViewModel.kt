@@ -105,6 +105,10 @@ class MainViewModel(private val repository: RdmRepository) : ViewModel() {
         _serverSearchQuery.value = ""
     }
 
+    fun observeServerById(id: Long): Flow<ServerEntity?> {
+        return repository.observeServerById(id)
+    }
+
     // ----------------- Client CRUD Actions -----------------
 
     fun openAddClientDialog() {

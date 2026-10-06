@@ -82,6 +82,10 @@ class RdmRepository(private val database: AppDatabase) {
         }
     }
 
+    fun observeServerById(id: Long): Flow<ServerEntity?> {
+        return serverDao.observeServerById(id)
+    }
+
     suspend fun getServerById(id: Long): ServerEntity? = withContext(Dispatchers.IO) {
         serverDao.getServerById(id)
     }

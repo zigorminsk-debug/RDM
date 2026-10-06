@@ -27,6 +27,7 @@ import com.rdm.remote.desktop.manager.utils.RdpLauncher
 @Composable
 fun RdpLaunchDialog(
     server: ServerEntity,
+    onLaunchInApp: (ServerEntity) -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -122,12 +123,24 @@ fun RdpLaunchDialog(
                 }
 
                 Text(
-                    text = "Способ запуска:",
+                    text = "Способ подключения:",
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.primary
                 )
 
-                // 1. Primary: Launch MS Remote Desktop (or System Default)
+                // 1. Primary In-App Embedded RDP Session
+                LaunchOptionCard(
+                    title = "Встроенный RDP клиент",
+                    subtitle = "Интерактивный удаленный рабочий стол прямо в приложении",
+                    icon = Icons.Default.Devices,
+                    color = MaterialTheme.colorScheme.primary,
+                    onClick = {
+                        onDismiss()
+                        onLaunchInApp(server)
+                    }
+                )
+
+                // 2. Launch MS Remote Desktop
                 LaunchOptionCard(
                     title = "Запустить в MS Remote Desktop",
                     subtitle = "Открыть через официальный клиент Microsoft",
@@ -136,7 +149,6 @@ fun RdpLaunchDialog(
                     onClick = {
                         val launched = RdpLauncher.launchRdpFile(context, server, RdpLauncher.PKG_MS_RDC_1)
                         if (!launched) {
-                            // Fallback to generic RDP file viewer or URI
                             val uriLaunched = RdpLauncher.launchRdpUri(context, server)
                             if (!uriLaunched) {
                                 RdpLauncher.launchRdpFile(context, server)
@@ -146,10 +158,10 @@ fun RdpLaunchDialog(
                     }
                 )
 
-                // 2. Launch in aFreeRDP / Generic RDP
+                // 3. Launch in generic RDP file viewer
                 LaunchOptionCard(
                     title = "Запустить через .RDP файл",
-                    subtitle = "Открыть в любом установленном RDP клиенте",
+                    subtitle = "Открыть в любом стороннем RDP клиенте",
                     icon = Icons.Outlined.OpenInNew,
                     color = Color(0xFF107C41),
                     onClick = {
@@ -158,7 +170,7 @@ fun RdpLaunchDialog(
                     }
                 )
 
-                // 3. If no client is installed, prompt to download MS Remote Desktop from Play Store
+                // 4. If no client is installed, offer Google Play install option
                 if (!isAnyClientInstalled) {
                     LaunchOptionCard(
                         title = "Установить MS Remote Desktop",

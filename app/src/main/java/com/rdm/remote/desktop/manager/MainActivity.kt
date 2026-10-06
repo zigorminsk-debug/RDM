@@ -9,6 +9,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.collectAsState
+import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModelProvider
 import androidx.navigation.NavType
@@ -19,6 +21,7 @@ import androidx.navigation.navArgument
 import com.rdm.remote.desktop.manager.ui.navigation.Screen
 import com.rdm.remote.desktop.manager.ui.screens.AllServersScreen
 import com.rdm.remote.desktop.manager.ui.screens.ClientListScreen
+import com.rdm.remote.desktop.manager.ui.screens.RdpSessionScreen
 import com.rdm.remote.desktop.manager.ui.screens.ServerListScreen
 import com.rdm.remote.desktop.manager.ui.screens.SettingsScreen
 import com.rdm.remote.desktop.manager.ui.theme.RemoteDesktopManagerTheme
@@ -84,6 +87,9 @@ class MainActivity : ComponentActivity() {
                                 viewModel = viewModel,
                                 onBackClick = {
                                     navController.popBackStack()
+                                },
+                                onLaunchInApp = { server ->
+                                    navController.navigate(Screen.RdpSession.createRoute(server.id))
                                 }
                             )
                         }
@@ -94,11 +100,34 @@ class MainActivity : ComponentActivity() {
                                 viewModel = viewModel,
                                 onBackClick = {
                                     navController.popBackStack()
+                                },
+                                onLaunchInApp = { server ->
+                                    navController.navigate(Screen.RdpSession.createRoute(server.id))
                                 }
                             )
                         }
 
-                        // 4. Settings & Backup Screen
+                        // 4. In-App Embedded RDP Session Screen
+                        composable(
+                            route = Screen.RdpSession.route,
+                            arguments = listOf(
+                                navArgument("serverId") { type = NavType.LongType }
+                            )
+                        ) { backStackEntry ->
+                            val serverId = backStackEntry.arguments?.getLong("serverId") ?: 0L
+                            val server by viewModel.observeServerById(serverId).collectAsState(initial = null)
+
+                            server?.let { currentServer ->
+                                RdpSessionScreen(
+                                    server = currentServer,
+                                    onDisconnect = {
+                                        navController.popBackStack()
+                                    }
+                                )
+                            }
+                        }
+
+                        // 5. Settings & Backup Screen
                         composable(Screen.Settings.route) {
                             SettingsScreen(
                                 viewModel = viewModel,
