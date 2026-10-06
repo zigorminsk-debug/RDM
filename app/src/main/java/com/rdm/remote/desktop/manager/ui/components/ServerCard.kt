@@ -62,7 +62,6 @@ fun ServerCard(
             .clip(RoundedCornerShape(18.dp))
             .combinedClickable(
                 onClick = {
-                    haptic.performHapticFeedback(HapticFeedbackType.ContextClick)
                     onClick()
                 },
                 onLongClick = {
