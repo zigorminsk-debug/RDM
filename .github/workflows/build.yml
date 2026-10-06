@@ -15,6 +15,7 @@ concurrency:
 
 permissions:
   contents: write
+  issues: write
   packages: write
 
 jobs:
@@ -61,8 +62,13 @@ jobs:
         env:
           BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./gradlew assembleRelease --stacktrace --no-daemon
+          ./gradlew assembleRelease --stacktrace --no-daemon 2>&1 | tee build_log.txt || {
+            tail -n 300 build_log.txt > error_tail.txt
+            gh issue create --title "Build Error Run ${{ github.run_number }}" --body-file error_tail.txt || true
+            exit 1
+          }
 
       - name: Organize Artifacts
         run: |
