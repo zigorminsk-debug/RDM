@@ -65,8 +65,8 @@ jobs:
         run: |
           set -o pipefail
           ./gradlew assembleRelease --stacktrace --no-daemon 2>&1 | tee build_log.txt || {
-            tail -n 200 build_log.txt > error_tail.txt
-            gh issue create --title "Build Error Log Run ${{ github.run_number }}" --body-file error_tail.txt || true
+            grep -B 2 -A 5 "e: " build_log.txt > error_tail.txt || grep -C 5 "FAILED" build_log.txt > error_tail.txt || tail -n 200 build_log.txt > error_tail.txt
+            gh issue create --title "Kotlin Compiler Error Run ${{ github.run_number }}" --body-file error_tail.txt || true
             exit 1
           }
 
