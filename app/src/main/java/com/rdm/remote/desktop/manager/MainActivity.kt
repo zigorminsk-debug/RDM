@@ -18,6 +18,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.rdm.remote.desktop.manager.data.model.ServerEntity
 import com.rdm.remote.desktop.manager.ui.navigation.Screen
 import com.rdm.remote.desktop.manager.ui.screens.AllServersScreen
 import com.rdm.remote.desktop.manager.ui.screens.ClientListScreen
@@ -88,7 +89,7 @@ class MainActivity : ComponentActivity() {
                                 onBackClick = {
                                     navController.popBackStack()
                                 },
-                                onLaunchInApp = { server ->
+                                onLaunchInApp = { server: ServerEntity ->
                                     navController.navigate(Screen.RdpSession.createRoute(server.id))
                                 }
                             )
@@ -101,7 +102,7 @@ class MainActivity : ComponentActivity() {
                                 onBackClick = {
                                     navController.popBackStack()
                                 },
-                                onLaunchInApp = { server ->
+                                onLaunchInApp = { server: ServerEntity ->
                                     navController.navigate(Screen.RdpSession.createRoute(server.id))
                                 }
                             )

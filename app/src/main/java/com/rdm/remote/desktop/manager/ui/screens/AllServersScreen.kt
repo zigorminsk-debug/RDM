@@ -14,6 +14,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rdm.remote.desktop.manager.data.model.ServerEntity
 import com.rdm.remote.desktop.manager.ui.components.RdpLaunchDialog
 import com.rdm.remote.desktop.manager.ui.components.RdmSearchBar
 import com.rdm.remote.desktop.manager.ui.components.ServerCard
