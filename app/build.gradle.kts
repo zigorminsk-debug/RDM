@@ -1,6 +1,4 @@
 import java.io.File
-import java.io.FileInputStream
-import java.util.Properties
 
 plugins {
     id("com.android.application")
@@ -41,23 +39,10 @@ android {
 
     signingConfigs {
         create("release") {
-            val keystorePropertiesFile = rootProject.file("keystore/keystore.properties")
-            val keystoreFile = rootProject.file("keystore/release.keystore")
-
-            if (keystorePropertiesFile.exists()) {
-                val props = Properties()
-                props.load(FileInputStream(keystorePropertiesFile))
-                val filePath = props.getProperty("KEYSTORE_FILE", "keystore/release.keystore")
-                storeFile = if (File(filePath).isAbsolute) File(filePath) else rootProject.file(filePath)
-                storePassword = props.getProperty("KEYSTORE_PASSWORD", "rdm_release_key_2026")
-                keyAlias = props.getProperty("KEY_ALIAS", "rdmkey")
-                keyPassword = props.getProperty("KEY_PASSWORD", "rdm_release_key_2026")
-            } else if (keystoreFile.exists()) {
-                storeFile = keystoreFile
-                storePassword = project.findProperty("KEYSTORE_PASSWORD")?.toString() ?: "rdm_release_key_2026"
-                keyAlias = project.findProperty("KEY_ALIAS")?.toString() ?: "rdmkey"
-                keyPassword = project.findProperty("KEY_PASSWORD")?.toString() ?: "rdm_release_key_2026"
-            }
+            storeFile = file("${rootProject.projectDir}/keystore/release.keystore")
+            storePassword = "rdm_release_key_2026"
+            keyAlias = "rdmkey"
+            keyPassword = "rdm_release_key_2026"
             enableV1Signing = true
             enableV2Signing = true
             enableV3Signing = true
@@ -87,10 +72,6 @@ android {
 
     kotlinOptions {
         jvmTarget = "17"
-        freeCompilerArgs += listOf(
-            "-opt-in=androidx.compose.material3.ExperimentalMaterial3Api",
-            "-opt-in=androidx.compose.foundation.ExperimentalFoundationApi"
-        )
     }
 
     buildFeatures {
@@ -114,12 +95,13 @@ dependencies {
     implementation(composeBom)
     androidTestImplementation(composeBom)
 
-    // AndroidX Core & Lifecycle
+    // AndroidX Core, Activity & Lifecycle
     implementation("androidx.core:core-ktx:1.13.0")
+    implementation("androidx.activity:activity-ktx:1.9.0")
+    implementation("androidx.activity:activity-compose:1.9.0")
     implementation("androidx.lifecycle:lifecycle-runtime-ktx:2.7.0")
     implementation("androidx.lifecycle:lifecycle-viewmodel-compose:2.7.0")
     implementation("androidx.lifecycle:lifecycle-runtime-compose:2.7.0")
-    implementation("androidx.activity:activity-compose:1.9.0")
 
     // Jetpack Compose UI & Material 3
     implementation("androidx.compose.ui:ui")

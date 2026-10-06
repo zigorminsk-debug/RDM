@@ -13,7 +13,7 @@ interface ClientDao {
 
     @Query("""
         SELECT c.id, c.name, c.description, c.colorHex, c.createdAt, c.updatedAt, 
-               COUNT(s.id) AS serverCount 
+               CAST(COUNT(s.id) AS INTEGER) AS serverCount 
         FROM clients c 
         LEFT JOIN servers s ON c.id = s.clientId 
         GROUP BY c.id 
@@ -23,7 +23,7 @@ interface ClientDao {
 
     @Query("""
         SELECT c.id, c.name, c.description, c.colorHex, c.createdAt, c.updatedAt, 
-               COUNT(s.id) AS serverCount 
+               CAST(COUNT(s.id) AS INTEGER) AS serverCount 
         FROM clients c 
         LEFT JOIN servers s ON c.id = s.clientId 
         WHERE c.name LIKE '%' || :query || '%' OR c.description LIKE '%' || :query || '%'
