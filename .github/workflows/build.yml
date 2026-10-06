@@ -61,17 +61,16 @@ jobs:
         env:
           BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./gradlew :app:assembleRelease :app:assembleDebug --stacktrace --no-daemon
+          ./gradlew :app:assembleRelease --stacktrace --no-daemon
 
       - name: Organize Artifacts
         run: |
           mkdir -p release-output
-          echo "=== All files in workspace after build ==="
-          find /home/runner/work -type f -name "*.apk" -o -name "*.aab"
-          find /home/runner/work -type f -name "*.apk" -exec cp -v {} release-output/ \; || true
-          for f in release-output/*release*.apk release-output/*.apk; do
+          echo "=== Searching for all APK files ==="
+          find . -name "*.apk"
+          find . -name "*.apk" -exec cp -v {} release-output/ \; || true
+          for f in release-output/*.apk; do
             if [ -f "$f" ]; then
               cp -v "$f" "release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
               break
@@ -83,7 +82,7 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: RDM-v${{ env.VERSION_NAME }}-Release-APK
-          path: release-output/*.apk
+          path: release-output/
           if-no-files-found: warn
           retention-days: 90
 
