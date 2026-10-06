@@ -62,45 +62,26 @@ jobs:
           BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
         run: |
-          ./gradlew assembleRelease --stacktrace --no-daemon 2>&1 | tee build.log
-
-      - name: Post Build Summary
-        if: always()
-        run: |
-          if [ -f build.log ]; then
-            echo "### 📋 Build Log Summary" >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-            tail -n 60 build.log >> $GITHUB_STEP_SUMMARY
-            echo '```' >> $GITHUB_STEP_SUMMARY
-          fi
-
-      - name: Upload Build Log Artifact
-        if: always()
-        uses: actions/upload-artifact@v4
-        with:
-          name: build-log
-          path: build.log
-          if-no-files-found: ignore
-          retention-days: 14
+          ./gradlew assembleRelease --stacktrace --no-daemon
 
       - name: Organize Artifacts
         run: |
           mkdir -p release-output
-          RELEASE_APK=$(find app/build/outputs/apk/release -name "*.apk" | head -n 1)
-          
-          if [ -n "$RELEASE_APK" ] && [ -f "$RELEASE_APK" ]; then
-            cp "$RELEASE_APK" "release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
-            echo "RELEASE_APK_PATH=release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk" >> $GITHUB_ENV
-          fi
-          
+          find app/build/outputs -name "*.apk" -exec cp {} release-output/ \;
+          for f in release-output/*.apk; do
+            if [ -f "$f" ]; then
+              cp "$f" "release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
+              break
+            fi
+          done
           ls -la release-output/
 
       - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: RDM-v${{ env.VERSION_NAME }}-Release-APK
-          path: release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk
-          if-no-files-found: error
+          path: release-output/*.apk
+          if-no-files-found: warn
           retention-days: 90
 
       - name: Publish GitHub Release with APK
