@@ -12,7 +12,8 @@ interface ClientDao {
     fun getAllClients(): Flow<List<ClientEntity>>
 
     @Query("""
-        SELECT c.id, c.name, c.description, c.colorHex, c.createdAt, c.updatedAt, 
+        SELECT c.id, c.name, COALESCE(c.description, '') AS description, 
+               COALESCE(c.colorHex, '#0078D7') AS colorHex, c.createdAt, c.updatedAt, 
                CAST(COUNT(s.id) AS INTEGER) AS serverCount 
         FROM clients c 
         LEFT JOIN servers s ON c.id = s.clientId 
@@ -22,7 +23,8 @@ interface ClientDao {
     fun getClientsWithCount(): Flow<List<ClientWithCount>>
 
     @Query("""
-        SELECT c.id, c.name, c.description, c.colorHex, c.createdAt, c.updatedAt, 
+        SELECT c.id, c.name, COALESCE(c.description, '') AS description, 
+               COALESCE(c.colorHex, '#0078D7') AS colorHex, c.createdAt, c.updatedAt, 
                CAST(COUNT(s.id) AS INTEGER) AS serverCount 
         FROM clients c 
         LEFT JOIN servers s ON c.id = s.clientId 
