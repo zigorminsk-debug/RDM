@@ -48,6 +48,37 @@ object RdpLauncher {
     }
 
     /**
+     * Automatic seamless connection (Как в RDM): launches server in best available RDP client
+     */
+    fun connectToServer(context: Context, server: ServerEntity) {
+        // 1. Try official Microsoft Remote Desktop
+        var launched = launchRdpFile(context, server, PKG_MS_RDC_1)
+        if (!launched) {
+            launched = launchRdpFile(context, server, PKG_MS_RDC_2)
+        }
+        if (!launched) {
+            launched = launchRdpFile(context, server, PKG_MS_RDC_BETA)
+        }
+        // 2. Try aFreeRDP
+        if (!launched) {
+            launched = launchRdpFile(context, server, PKG_AFREERDP)
+        }
+        // 3. Try generic .rdp file association
+        if (!launched) {
+            launched = launchRdpFile(context, server)
+        }
+        // 4. Try rdp:// URI scheme
+        if (!launched) {
+            launched = launchRdpUri(context, server)
+        }
+        // 5. If no client installed, prompt to install from Play Store
+        if (!launched) {
+            Toast.makeText(context, "Установите MS Remote Desktop для прямого подключения", Toast.LENGTH_LONG).show()
+            openPlayStore(context, PKG_MS_RDC_1)
+        }
+    }
+
+    /**
      * Generates .rdp configuration file content according to MS RDP specifications
      */
     fun generateRdpFileContent(server: ServerEntity): String {
@@ -136,7 +167,6 @@ object RdpLauncher {
             context.startActivity(intent)
             true
         } catch (e: Exception) {
-            // Fallback without MIME type restriction
             try {
                 val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
                     setDataAndType(uri, "application/rdp")

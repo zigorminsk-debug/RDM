@@ -130,7 +130,7 @@ fun ServerCard(
                     }
                 }
 
-                // Options Dropdown
+                // 3-dots Context Menu Button
                 Box {
                     IconButton(
                         onClick = { showMenu = true },
@@ -138,7 +138,7 @@ fun ServerCard(
                     ) {
                         Icon(
                             imageVector = Icons.Default.MoreVert,
-                            contentDescription = "Menu",
+                            contentDescription = "Действия",
                             tint = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                     }
@@ -148,11 +148,27 @@ fun ServerCard(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Запустить RDP") },
-                            leadingIcon = { Icon(Icons.Default.PlayArrow, contentDescription = null, tint = accentColor) },
+                            text = { Text("Быстрое подключение RDP") },
+                            leadingIcon = { Icon(Icons.Default.Launch, contentDescription = null, tint = Color(0xFF0078D7)) },
+                            onClick = {
+                                showMenu = false
+                                RdpLauncher.connectToServer(context, server)
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Параметры запуска") },
+                            leadingIcon = { Icon(Icons.Default.DesktopWindows, contentDescription = null) },
                             onClick = {
                                 showMenu = false
                                 onClick()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Редактировать") },
+                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
+                            onClick = {
+                                showMenu = false
+                                onEdit()
                             }
                         )
                         DropdownMenuItem(
@@ -161,14 +177,6 @@ fun ServerCard(
                             onClick = {
                                 showMenu = false
                                 onPingTest()
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Редактировать (Долгое нажатие)") },
-                            leadingIcon = { Icon(Icons.Default.Edit, contentDescription = null) },
-                            onClick = {
-                                showMenu = false
-                                onEdit()
                             }
                         )
                         DropdownMenuItem(
@@ -182,13 +190,7 @@ fun ServerCard(
                         HorizontalDivider()
                         DropdownMenuItem(
                             text = { Text("Удалить", color = MaterialTheme.colorScheme.error) },
-                            leadingIcon = {
-                                Icon(
-                                    Icons.Default.Delete,
-                                    contentDescription = null,
-                                    tint = MaterialTheme.colorScheme.error
-                                )
-                            },
+                            leadingIcon = { Icon(Icons.Default.Delete, contentDescription = null, tint = MaterialTheme.colorScheme.error) },
                             onClick = {
                                 showMenu = false
                                 onDelete()
@@ -324,8 +326,8 @@ fun ServerCard(
                     Text(
                         text = if (passwordVisible) server.password else "••••••••",
                         style = MaterialTheme.typography.bodyMedium.copy(
-                            fontFamily = FontFamily.Monospace,
-                            fontWeight = FontWeight.Medium
+                            fontFamily = if (passwordVisible) FontFamily.Monospace else FontFamily.Default,
+                            fontWeight = FontWeight.SemiBold
                         ),
                         color = MaterialTheme.colorScheme.onSurface,
                         modifier = Modifier.weight(1f),
@@ -374,7 +376,7 @@ fun ServerCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Action Buttons: Connect (Primary) + Ping + Details
+            // Action Buttons: Ping + Direct Connect Button (Как в RDM)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -404,15 +406,17 @@ fun ServerCard(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Big Connect Button (triggers RDP Launch)
+                // Direct RDP Connect Button (Как в RDM: запускает сессию реального сервера)
                 Button(
-                    onClick = onClick,
+                    onClick = {
+                        RdpLauncher.connectToServer(context, server)
+                    },
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.DesktopWindows,
+                        imageVector = Icons.Default.Launch,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
