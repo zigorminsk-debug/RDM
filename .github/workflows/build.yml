@@ -34,7 +34,6 @@ jobs:
         with:
           java-version: '17'
           distribution: 'temurin'
-          cache: 'gradle'
 
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
@@ -64,7 +63,7 @@ jobs:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./gradlew assembleRelease --stacktrace --no-daemon 2>&1 | tee build_log.txt || {
+          ./gradlew assembleRelease --rerun-tasks --no-build-cache --stacktrace --no-daemon 2>&1 | tee build_log.txt || {
             tail -n 300 build_log.txt > error_tail.txt
             gh issue create --title "Build Error Run ${{ github.run_number }}" --body-file error_tail.txt || true
             exit 1
@@ -73,7 +72,9 @@ jobs:
       - name: Organize Artifacts
         run: |
           mkdir -p release-output
-          find . -name "*.apk" -not -path "*/release-output/*" -exec cp -v {} release-output/ \;
+          echo "=== Searching for APK files ==="
+          find . -name "*.apk"
+          find app/build -name "*.apk" -exec cp -v {} release-output/ \; || true
           for f in release-output/*.apk; do
             if [ -f "$f" ]; then
               cp -v "$f" "release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
