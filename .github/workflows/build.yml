@@ -98,8 +98,12 @@ jobs:
           TAG="v${{ env.VERSION_NAME }}"
           TITLE="RDM Release v${{ env.VERSION_NAME }} (Build ${{ env.VERSION_CODE }})"
           
-          gh release create "$TAG" release-output/*.apk \
-            --target "${{ github.sha }}" \
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git tag -f "$TAG" "${{ github.sha }}" || true
+          git push -f origin "$TAG" || true
+
+          gh release create "$TAG" "release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk" \
             --title "$TITLE" \
             --clobber \
             --notes "### 🚀 Remote Desktop Manager (RDM) Android v${{ env.VERSION_NAME }}
@@ -107,9 +111,10 @@ jobs:
           **Номер сборки**: \`${{ env.VERSION_CODE }}\`
           
           #### 📦 Что включено:
-          - 🔑 **Постоянный ключ подписи (Release Keystore)**: обновление поверх без удаления приложения.
+          - 🖥️ **Встроенный RDP-клиент**: прямое интерактивное подключение внутри приложения с виртуальным тачпадом, курсором, прямым касанием и панелью функциональных клавиш (Ctrl+Alt+Del, Win, Alt+Tab, F1-F12).
+          - 🔑 **Постоянный ключ подписи (Release Keystore)**: бесшовное обновление поверх без удаления приложения.
           - 🏢 **Иерархия клиентов и серверов**: список клиентов -> карточки серверов при клике.
-          - ⚡ **RDP запуск**: клик на карточку запускает RDP подключение (MS Remote Desktop, aFreeRDP, .rdp файл).
+          - ⚡ **RDP запуск**: выбор между встроенным клиентом и внешними приложениями (MS Remote Desktop, aFreeRDP, .rdp файл).
           - ✏️ **Редактирование серверов**: долгое нажатие открывает модальное окно со всеми полями.
           - 💾 **Экспорт и импорт**: полное резервное копирование в JSON.
           - 🌐 **Проверка доступности**: встроенный TCP Ping.
