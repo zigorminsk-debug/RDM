@@ -99,6 +99,7 @@ jobs:
           TITLE="RDM Release v${{ env.VERSION_NAME }} (Build ${{ env.VERSION_CODE }})"
           
           gh release create "$TAG" release-output/*.apk \
+            --target "${{ github.sha }}" \
             --title "$TITLE" \
             --notes "### 🚀 Remote Desktop Manager (RDM) Android v${{ env.VERSION_NAME }}
           
