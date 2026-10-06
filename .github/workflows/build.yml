@@ -61,23 +61,32 @@ jobs:
         env:
           BUILD_NUMBER: ${{ env.BUILD_NUMBER }}
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./gradlew assembleRelease --stacktrace --no-daemon
+          set -o pipefail
+          ./gradlew assembleRelease --stacktrace --no-daemon 2>&1 | tee build_log.txt || {
+            tail -n 200 build_log.txt > error_tail.txt
+            gh issue create --title "Build Error Log Run ${{ github.run_number }}" --body-file error_tail.txt || true
+            exit 1
+          }
 
       - name: Organize Artifacts
         run: |
           mkdir -p release-output
-          echo "=== Locate built APKs ==="
-          find app/build/outputs/apk -type f -name "*.apk" -print
-          cp -v app/build/outputs/apk/release/*.apk release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk || true
-          cp -v $(find app/build/outputs -name "*.apk") release-output/ || true
+          find app/build/outputs/apk -type f -name "*.apk" -exec cp -v {} release-output/ \; || true
+          for f in release-output/*.apk; do
+            if [ -f "$f" ]; then
+              cp -v "$f" "release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
+              break
+            fi
+          done
           ls -la release-output/
 
       - name: Upload Release APK Artifact
         uses: actions/upload-artifact@v4
         with:
           name: RDM-v${{ env.VERSION_NAME }}-Release-APK
-          path: release-output/
+          path: release-output/*.apk
           if-no-files-found: warn
           retention-days: 90
 
