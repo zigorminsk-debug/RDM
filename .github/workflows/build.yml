@@ -63,19 +63,15 @@ jobs:
           GITHUB_RUN_NUMBER: ${{ github.run_number }}
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          ./gradlew assembleRelease --rerun-tasks --no-build-cache --stacktrace --no-daemon 2>&1 | tee build_log.txt || {
-            tail -n 300 build_log.txt > error_tail.txt
-            gh issue create --title "Build Error Run ${{ github.run_number }}" --body-file error_tail.txt || true
-            exit 1
-          }
+          ./gradlew :app:assembleRelease :app:assembleDebug --stacktrace --no-daemon
 
       - name: Organize Artifacts
         run: |
           mkdir -p release-output
-          echo "=== Searching for APK files ==="
-          find . -name "*.apk"
-          find app/build -name "*.apk" -exec cp -v {} release-output/ \; || true
-          for f in release-output/*.apk; do
+          echo "=== All files in workspace after build ==="
+          find /home/runner/work -type f -name "*.apk" -o -name "*.aab"
+          find /home/runner/work -type f -name "*.apk" -exec cp -v {} release-output/ \; || true
+          for f in release-output/*release*.apk release-output/*.apk; do
             if [ -f "$f" ]; then
               cp -v "$f" "release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
               break
