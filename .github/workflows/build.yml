@@ -73,10 +73,10 @@ jobs:
       - name: Organize Artifacts
         run: |
           mkdir -p release-output
-          find app/build/outputs -name "*.apk" -exec cp {} release-output/ \;
+          find . -name "*.apk" -not -path "*/release-output/*" -exec cp -v {} release-output/ \;
           for f in release-output/*.apk; do
             if [ -f "$f" ]; then
-              cp "$f" "release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
+              cp -v "$f" "release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
               break
             fi
           done
