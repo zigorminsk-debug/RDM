@@ -12,8 +12,9 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import com.rdm.remote.desktop.manager.data.model.ClientEntity
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rdm.remote.desktop.manager.data.model.ServerEntity
 import com.rdm.remote.desktop.manager.ui.components.RdmSearchBar
 import com.rdm.remote.desktop.manager.ui.components.RdpLaunchDialog
@@ -29,17 +30,18 @@ fun ServerListScreen(
     onBackClick: () -> Unit,
     onLaunchInApp: (ServerEntity) -> Unit
 ) {
-    val client by viewModel.observeClient(clientId).collectAsState(initial = null)
-    val servers by viewModel.filteredServers.collectAsState()
-    val searchQuery by viewModel.serverSearchQuery.collectAsState()
-    val editingServer by viewModel.editingServer.collectAsState()
-    val deletingServer by viewModel.deletingServer.collectAsState()
-    val launchingServer by viewModel.launchingServer.collectAsState()
-    val pingResults by viewModel.pingResults.collectAsState()
-
     LaunchedEffect(clientId) {
         viewModel.selectClient(clientId)
     }
+
+    val client by viewModel.currentClient.collectAsStateWithLifecycle()
+    val servers by viewModel.servers.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.serverSearchQuery.collectAsStateWithLifecycle()
+    val pingResults by viewModel.pingResults.collectAsStateWithLifecycle()
+
+    val editingServer by viewModel.editingServer.collectAsStateWithLifecycle()
+    val launchingServer by viewModel.launchingServer.collectAsStateWithLifecycle()
+    val deletingServer by viewModel.deletingServer.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -48,13 +50,17 @@ fun ServerListScreen(
                     Column {
                         Text(
                             text = client?.name ?: "Серверы",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis
                         )
-                        if (!client?.description.isNullOrBlank()) {
+                        if (client?.description?.isNotBlank() == true) {
                             Text(
                                 text = client?.description ?: "",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant
+                                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                maxLines = 1,
+                                overflow = TextOverflow.Ellipsis
                             )
                         }
                     }
@@ -158,7 +164,7 @@ fun ServerListScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = if (searchQuery.isNotBlank()) "Попробуйте изменить поисковый запрос" else "Нажмите «+ Добавить сервер», чтобы создать первую запись RDP для этого клиента",
+                            text = if (searchQuery.isNotBlank()) "Попробуйте изменить поисковый запрос" else "Нажмите «Добавить сервер», чтобы создать первую запись RDP для этого клиента",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center

@@ -13,6 +13,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rdm.remote.desktop.manager.data.model.ServerEntity
 import com.rdm.remote.desktop.manager.ui.components.RdmSearchBar
 import com.rdm.remote.desktop.manager.ui.components.RdpLaunchDialog
@@ -27,19 +28,20 @@ fun AllServersScreen(
     onBackClick: () -> Unit,
     onLaunchInApp: (ServerEntity) -> Unit
 ) {
-    val servers by viewModel.allFilteredServers.collectAsState()
-    val searchQuery by viewModel.serverSearchQuery.collectAsState()
-    val editingServer by viewModel.editingServer.collectAsState()
-    val deletingServer by viewModel.deletingServer.collectAsState()
-    val launchingServer by viewModel.launchingServer.collectAsState()
-    val pingResults by viewModel.pingResults.collectAsState()
+    val servers by viewModel.allServers.collectAsStateWithLifecycle()
+    val searchQuery by viewModel.serverSearchQuery.collectAsStateWithLifecycle()
+    val pingResults by viewModel.pingResults.collectAsStateWithLifecycle()
+
+    val editingServer by viewModel.editingServer.collectAsStateWithLifecycle()
+    val launchingServer by viewModel.launchingServer.collectAsStateWithLifecycle()
+    val deletingServer by viewModel.deletingServer.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
             TopAppBar(
                 title = {
                     Text(
-                        text = "Все серверы RDP",
+                        text = "Все серверы",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 },
@@ -66,7 +68,7 @@ fun AllServersScreen(
             RdmSearchBar(
                 query = searchQuery,
                 onQueryChange = { viewModel.setServerSearchQuery(it) },
-                placeholder = "Поиск по всем серверам, IP, логину, клиенту..."
+                placeholder = "Глобальный поиск серверов..."
             )
 
             // Hint Text for click / long click actions
