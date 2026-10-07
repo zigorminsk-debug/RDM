@@ -12,12 +12,11 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import com.rdm.remote.desktop.manager.data.model.ClientEntity
 import com.rdm.remote.desktop.manager.data.model.ServerEntity
-import com.rdm.remote.desktop.manager.ui.components.RdpLaunchDialog
 import com.rdm.remote.desktop.manager.ui.components.RdmSearchBar
+import com.rdm.remote.desktop.manager.ui.components.RdpLaunchDialog
 import com.rdm.remote.desktop.manager.ui.components.ServerCard
 import com.rdm.remote.desktop.manager.ui.components.ServerEditDialog
 import com.rdm.remote.desktop.manager.ui.viewmodel.MainViewModel
@@ -30,18 +29,17 @@ fun ServerListScreen(
     onBackClick: () -> Unit,
     onLaunchInApp: (ServerEntity) -> Unit
 ) {
+    val client by viewModel.observeClient(clientId).collectAsState(initial = null)
+    val servers by viewModel.filteredServers.collectAsState()
+    val searchQuery by viewModel.serverSearchQuery.collectAsState()
+    val editingServer by viewModel.editingServer.collectAsState()
+    val deletingServer by viewModel.deletingServer.collectAsState()
+    val launchingServer by viewModel.launchingServer.collectAsState()
+    val pingResults by viewModel.pingResults.collectAsState()
+
     LaunchedEffect(clientId) {
         viewModel.selectClient(clientId)
     }
-
-    val client by viewModel.currentClient.collectAsStateWithLifecycle()
-    val servers by viewModel.servers.collectAsStateWithLifecycle()
-    val searchQuery by viewModel.serverSearchQuery.collectAsStateWithLifecycle()
-    val pingResults by viewModel.pingResults.collectAsStateWithLifecycle()
-
-    val editingServer by viewModel.editingServer.collectAsStateWithLifecycle()
-    val launchingServer by viewModel.launchingServer.collectAsStateWithLifecycle()
-    val deletingServer by viewModel.deletingServer.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -49,18 +47,14 @@ fun ServerListScreen(
                 title = {
                     Column {
                         Text(
-                            text = client?.name ?: "Серверы клиента",
-                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
-                            maxLines = 1,
-                            overflow = TextOverflow.Ellipsis
+                            text = client?.name ?: "Серверы",
+                            style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                         )
-                        if (client?.description?.isNotBlank() == true) {
+                        if (!client?.description.isNullOrBlank()) {
                             Text(
                                 text = client?.description ?: "",
                                 style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                                maxLines = 1,
-                                overflow = TextOverflow.Ellipsis
+                                color = MaterialTheme.colorScheme.onSurfaceVariant
                             )
                         }
                     }
@@ -129,7 +123,7 @@ fun ServerListScreen(
                     )
                     Spacer(modifier = Modifier.width(8.dp))
                     Text(
-                        text = "Нажатие — запуск RDP. Долгое нажатие — редактирование.",
+                        text = "Нажатие — запуск встроенного RDP. Долгое нажатие — редактирование.",
                         style = MaterialTheme.typography.labelSmall,
                         color = MaterialTheme.colorScheme.onPrimaryContainer
                     )
@@ -151,10 +145,10 @@ fun ServerListScreen(
                         verticalArrangement = Arrangement.Center
                     ) {
                         Icon(
-                            imageVector = Icons.Default.DesktopAccessDisabled,
+                            imageVector = Icons.Default.Computer,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                            modifier = Modifier.size(72.dp)
+                            modifier = Modifier.size(64.dp)
                         )
                         Spacer(modifier = Modifier.height(16.dp))
                         Text(
@@ -164,7 +158,7 @@ fun ServerListScreen(
                         )
                         Spacer(modifier = Modifier.height(8.dp))
                         Text(
-                            text = if (searchQuery.isNotBlank()) "Попробуйте изменить поисковый фильтр" else "Нажмите «Добавить сервер», чтобы создать первую карточку подключения",
+                            text = if (searchQuery.isNotBlank()) "Попробуйте изменить поисковый запрос" else "Нажмите «+ Добавить сервер», чтобы создать первую запись RDP для этого клиента",
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                             textAlign = TextAlign.Center
@@ -189,12 +183,13 @@ fun ServerListScreen(
                         ServerCard(
                             server = server,
                             pingStatus = pingResults[server.id],
-                            onClick = { viewModel.openRdpLaunchDialog(server) },
+                            onClick = { onLaunchInApp(server) },
                             onLongClick = { viewModel.openEditServerDialog(server) },
                             onEdit = { viewModel.openEditServerDialog(server) },
                             onDuplicate = { viewModel.duplicateServer(server) },
                             onDelete = { viewModel.promptDeleteServer(server) },
-                            onPingTest = { viewModel.testServerConnection(server) }
+                            onPingTest = { viewModel.testServerConnection(server) },
+                            onOptions = { viewModel.openRdpLaunchDialog(server) }
                         )
                     }
                 }

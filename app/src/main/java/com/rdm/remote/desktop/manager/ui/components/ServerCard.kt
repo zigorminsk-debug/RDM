@@ -42,6 +42,7 @@ fun ServerCard(
     onDuplicate: () -> Unit,
     onDelete: () -> Unit,
     onPingTest: () -> Unit,
+    onOptions: () -> Unit,
     modifier: Modifier = Modifier
 ) {
     val context = LocalContext.current
@@ -148,19 +149,19 @@ fun ServerCard(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Способ подключения RDP") },
-                            leadingIcon = { Icon(Icons.Default.Devices, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                            text = { Text("Встроенный RDP-клиент") },
+                            leadingIcon = { Icon(Icons.Default.DesktopWindows, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
                             onClick = {
                                 showMenu = false
                                 onClick()
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Внешний MS Remote Desktop") },
-                            leadingIcon = { Icon(Icons.Default.Launch, contentDescription = null, tint = Color(0xFF0078D7)) },
+                            text = { Text("Реквизиты и экспорт .RDP") },
+                            leadingIcon = { Icon(Icons.Default.Devices, contentDescription = null) },
                             onClick = {
                                 showMenu = false
-                                RdpLauncher.connectToServer(context, server)
+                                onOptions()
                             }
                         )
                         DropdownMenuItem(
@@ -376,7 +377,7 @@ fun ServerCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Action Buttons: Ping + Connect Button (opens Launch Dialog with In-App & External options)
+            // Action Buttons: Ping + Direct In-App Connect Button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -406,7 +407,7 @@ fun ServerCard(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Connect Button (Triggers Dialog with In-App Client & MS Remote Desktop)
+                // Connect Button (Directly launches Embedded In-App RDP Session)
                 Button(
                     onClick = onClick,
                     shape = RoundedCornerShape(12.dp),
