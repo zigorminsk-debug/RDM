@@ -48,7 +48,8 @@ object RdpLauncher {
     }
 
     /**
-     * Automatic seamless connection (Как в RDM): launches server in best available RDP client
+     * Automatic seamless connection: launches server directly in official MS Remote Desktop,
+     * aFreeRDP, or general RDP handler. If none is installed, opens Google Play.
      */
     fun connectToServer(context: Context, server: ServerEntity) {
         // 1. Try official Microsoft Remote Desktop
@@ -73,7 +74,7 @@ object RdpLauncher {
         }
         // 5. If no client installed, prompt to install from Play Store
         if (!launched) {
-            Toast.makeText(context, "Установите MS Remote Desktop для прямого подключения", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Установите Microsoft Remote Desktop для прямого подключения", Toast.LENGTH_LONG).show()
             openPlayStore(context, PKG_MS_RDC_1)
         }
     }
@@ -156,32 +157,41 @@ object RdpLauncher {
      */
     fun launchRdpFile(context: Context, server: ServerEntity, targetPackage: String? = null): Boolean {
         val uri = createRdpFile(context, server) ?: return false
-        return try {
-            val intent = Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri, "application/x-rdp")
-                flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
-                if (!targetPackage.isNullOrBlank()) {
-                    setPackage(targetPackage)
-                }
-            }
-            context.startActivity(intent)
-            true
-        } catch (e: Exception) {
+
+        val candidates = if (!targetPackage.isNullOrBlank()) {
+            listOf(targetPackage)
+        } else {
+            listOf(
+                PKG_MS_RDC_1,
+                PKG_MS_RDC_2,
+                PKG_MS_RDC_BETA,
+                PKG_AFREERDP
+            )
+        }
+
+        for (pkg in candidates) {
             try {
-                val fallbackIntent = Intent(Intent.ACTION_VIEW).apply {
-                    setDataAndType(uri, "application/rdp")
-                    flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+                context.grantUriPermission(pkg, uri, Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            } catch (ignored: Exception) {}
+        }
+
+        val mimeTypes = listOf("application/x-rdp", "application/rdp", "*/*")
+        for (mime in mimeTypes) {
+            try {
+                val intent = Intent(Intent.ACTION_VIEW).apply {
+                    setDataAndType(uri, mime)
+                    addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     if (!targetPackage.isNullOrBlank()) {
                         setPackage(targetPackage)
                     }
                 }
-                context.startActivity(fallbackIntent)
-                true
-            } catch (ex: Exception) {
-                ex.printStackTrace()
-                false
-            }
+                context.startActivity(intent)
+                return true
+            } catch (ignored: Exception) {}
         }
+
+        return false
     }
 
     /**

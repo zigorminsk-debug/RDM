@@ -1,7 +1,6 @@
 package com.rdm.remote.desktop.manager.ui.components
 
 import androidx.compose.foundation.background
-import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.rememberScrollState
@@ -30,7 +29,6 @@ import com.rdm.remote.desktop.manager.utils.RdpLauncher
 @Composable
 fun RdpLaunchDialog(
     server: ServerEntity,
-    onLaunchInApp: (ServerEntity) -> Unit,
     onDismiss: () -> Unit
 ) {
     val context = LocalContext.current
@@ -128,31 +126,19 @@ fun RdpLaunchDialog(
                 }
 
                 Text(
-                    text = "Способ подключения:",
+                    text = "Выберите RDP-клиент:",
                     style = MaterialTheme.typography.labelMedium.copy(fontWeight = FontWeight.Bold),
                     color = MaterialTheme.colorScheme.primary
                 )
 
-                // 1. #1 Primary: In-App Embedded RDP Client (Встроенный RDP-клиент)
+                // 1. Launch MS Remote Desktop (Official client)
                 LaunchOptionCard(
-                    title = "Встроенный RDP-клиент (In-App)",
-                    subtitle = "Прямой интерактивный сеанс в приложении: виртуальный тачпад, клавиатура, горячие клавиши и зум",
-                    icon = Icons.Default.Devices,
-                    color = MaterialTheme.colorScheme.primary,
-                    isFeatured = true,
-                    badgeText = "Встроенный RDP",
-                    onClick = {
-                        onDismiss()
-                        onLaunchInApp(server)
-                    }
-                )
-
-                // 2. Launch MS Remote Desktop (Real remote Windows server session)
-                LaunchOptionCard(
-                    title = "Подключиться (MS Remote Desktop)",
-                    subtitle = "Прямой запуск сессии в официальном клиенте Microsoft Remote Desktop",
+                    title = "Microsoft Remote Desktop",
+                    subtitle = "Прямой запуск реального сервера в официальном клиенте Microsoft",
                     icon = Icons.Default.Launch,
                     color = Color(0xFF0078D7),
+                    isFeatured = true,
+                    badgeText = "Рекомендуется",
                     onClick = {
                         val launched = RdpLauncher.launchRdpFile(context, server, RdpLauncher.PKG_MS_RDC_1)
                         if (!launched) {
@@ -165,10 +151,10 @@ fun RdpLaunchDialog(
                     }
                 )
 
-                // 3. Launch via generic .RDP file (aFreeRDP / Any installed client)
+                // 2. Launch via generic .RDP file (aFreeRDP / Any installed client)
                 LaunchOptionCard(
-                    title = "Открыть через .RDP файл",
-                    subtitle = "Экспорт файла настроек в aFreeRDP или любой сторонний клиент",
+                    title = "aFreeRDP / Любой RDP клиент",
+                    subtitle = "Открыть сессию через файл конфигурации .rdp",
                     icon = Icons.Outlined.OpenInNew,
                     color = Color(0xFF107C41),
                     onClick = {
@@ -177,11 +163,11 @@ fun RdpLaunchDialog(
                     }
                 )
 
-                // 4. If no client is installed, offer Play Store install option
+                // 3. If no client is installed, offer Play Store install option
                 if (!isAnyClientInstalled) {
                     LaunchOptionCard(
                         title = "Установить MS Remote Desktop",
-                        subtitle = "Скачать из Google Play для внешнего подключения",
+                        subtitle = "Скачать официальное приложение Microsoft из Google Play",
                         icon = Icons.Default.Download,
                         color = MaterialTheme.colorScheme.tertiary,
                         onClick = {
@@ -218,13 +204,6 @@ private fun LaunchOptionCard(
         modifier = Modifier
             .fillMaxWidth()
             .clip(RoundedCornerShape(14.dp))
-            .then(
-                if (isFeatured) {
-                    Modifier.border(1.5.dp, color.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
-                } else {
-                    Modifier
-                }
-            )
             .clickable(onClick = onClick)
     ) {
         Row(

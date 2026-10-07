@@ -7,7 +7,4 @@ sealed class Screen(val route: String) {
     }
     object AllServers : Screen("all_servers")
     object Settings : Screen("settings")
-    object RdpSession : Screen("rdp_session/{serverId}") {
-        fun createRoute(serverId: Long) = "rdp_session/$serverId"
-    }
 }

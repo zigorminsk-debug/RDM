@@ -10,6 +10,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -21,15 +22,17 @@ import com.rdm.remote.desktop.manager.ui.components.RdpLaunchDialog
 import com.rdm.remote.desktop.manager.ui.components.ServerCard
 import com.rdm.remote.desktop.manager.ui.components.ServerEditDialog
 import com.rdm.remote.desktop.manager.ui.viewmodel.MainViewModel
+import com.rdm.remote.desktop.manager.utils.RdpLauncher
 
 @OptIn(ExperimentalMaterial3Api::class)
 @Composable
 fun ServerListScreen(
     clientId: Long,
     viewModel: MainViewModel,
-    onBackClick: () -> Unit,
-    onLaunchInApp: (ServerEntity) -> Unit
+    onBackClick: () -> Unit
 ) {
+    val context = LocalContext.current
+
     LaunchedEffect(clientId) {
         viewModel.selectClient(clientId)
     }
@@ -49,7 +52,7 @@ fun ServerListScreen(
                 title = {
                     Column {
                         Text(
-                            text = client?.name ?: "Серверы",
+                            text = client?.name ?: "Серверы клиента",
                             style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold),
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis
@@ -75,11 +78,7 @@ fun ServerListScreen(
                 },
                 actions = {
                     IconButton(onClick = { viewModel.openAddServerDialog(clientId) }) {
-                        Icon(
-                            imageVector = Icons.Default.Add,
-                            contentDescription = "Добавить сервер",
-                            tint = MaterialTheme.colorScheme.primary
-                        )
+                        Icon(Icons.Default.Add, contentDescription = "Добавить сервер")
                     }
                 },
                 colors = TopAppBarDefaults.topAppBarColors(
@@ -88,90 +87,60 @@ fun ServerListScreen(
             )
         },
         floatingActionButton = {
-            ExtendedFloatingActionButton(
+            FloatingActionButton(
                 onClick = { viewModel.openAddServerDialog(clientId) },
-                icon = { Icon(Icons.Default.Add, contentDescription = "Добавить сервер") },
-                text = { Text("Добавить сервер") },
                 containerColor = MaterialTheme.colorScheme.primary,
                 contentColor = MaterialTheme.colorScheme.onPrimary
-            )
+            ) {
+                Icon(Icons.Default.Add, contentDescription = "Добавить сервер")
+            }
         }
-    ) { innerPadding ->
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(paddingValues)
         ) {
             // Search Bar
             RdmSearchBar(
                 query = searchQuery,
                 onQueryChange = { viewModel.setServerSearchQuery(it) },
-                placeholder = "Поиск по названию, IP, логину, домену..."
+                placeholderText = "Поиск по серверу, IP, логину...",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
-            // Hint Text for click / long click actions
-            Surface(
-                color = MaterialTheme.colorScheme.primaryContainer.copy(alpha = 0.4f),
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = 16.dp, vertical = 4.dp),
-                shape = MaterialTheme.shapes.small
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 12.dp, vertical = 6.dp),
-                    verticalAlignment = Alignment.CenterVertically
-                ) {
-                    Icon(
-                        imageVector = Icons.Default.TouchApp,
-                        contentDescription = null,
-                        tint = MaterialTheme.colorScheme.primary,
-                        modifier = Modifier.size(16.dp)
-                    )
-                    Spacer(modifier = Modifier.width(8.dp))
-                    Text(
-                        text = "Нажатие — запуск встроенного RDP. Долгое нажатие — редактирование.",
-                        style = MaterialTheme.typography.labelSmall,
-                        color = MaterialTheme.colorScheme.onPrimaryContainer
-                    )
-                }
-            }
-
-            Spacer(modifier = Modifier.height(4.dp))
-
-            // Servers List or Empty State
+            // Content List
             if (servers.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(24.dp),
+                        .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.Computer,
+                            imageVector = Icons.Default.Dns,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                            modifier = Modifier.size(64.dp)
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.outline
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = if (searchQuery.isNotBlank()) "Серверы не найдены" else "Нет добавленных серверов",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = if (searchQuery.isNotBlank()) "Попробуйте изменить поисковый запрос" else "Нажмите «Добавить сервер», чтобы создать первую запись RDP для этого клиента",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
+                            text = if (searchQuery.isBlank()) {
+                                "У этого клиента пока нет добавленных серверов"
+                            } else {
+                                "Ничего не найдено по запросу «$searchQuery»"
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (searchQuery.isBlank()) {
-                            Spacer(modifier = Modifier.height(20.dp))
-                            Button(onClick = { viewModel.openAddServerDialog(clientId) }) {
+                            Button(
+                                onClick = { viewModel.openAddServerDialog(clientId) }
+                            ) {
                                 Icon(Icons.Default.Add, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
                                 Text("Добавить сервер")
@@ -185,11 +154,16 @@ fun ServerListScreen(
                     contentPadding = PaddingValues(start = 16.dp, end = 16.dp, top = 8.dp, bottom = 88.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp)
                 ) {
-                    items(servers, key = { it.id }) { server ->
+                    items(
+                        items = servers,
+                        key = { it.id }
+                    ) { server ->
                         ServerCard(
                             server = server,
                             pingStatus = pingResults[server.id],
-                            onClick = { onLaunchInApp(server) },
+                            onClick = {
+                                RdpLauncher.connectToServer(context, server)
+                            },
                             onLongClick = { viewModel.openEditServerDialog(server) },
                             onEdit = { viewModel.openEditServerDialog(server) },
                             onDuplicate = { viewModel.duplicateServer(server) },
@@ -218,7 +192,10 @@ fun ServerListScreen(
     launchingServer?.let { server ->
         RdpLaunchDialog(
             server = server,
-            onLaunchInApp = { onLaunchInApp(it) },
+            onLaunchInApp = {
+                RdpLauncher.connectToServer(context, it)
+                viewModel.closeRdpLaunchDialog()
+            },
             onDismiss = { viewModel.closeRdpLaunchDialog() }
         )
     }

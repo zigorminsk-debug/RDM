@@ -45,7 +45,7 @@ fun SettingsScreen(
             TopAppBar(
                 title = {
                     Text(
-                        text = "Настройки и RDP",
+                        text = "Настройки",
                         style = MaterialTheme.typography.titleLarge.copy(fontWeight = FontWeight.Bold)
                     )
                 },
@@ -62,18 +62,18 @@ fun SettingsScreen(
                 )
             )
         }
-    ) { innerPadding ->
+    ) { paddingValues ->
         Column(
             modifier = Modifier
                 .fillMaxSize()
-                .padding(innerPadding)
+                .padding(paddingValues)
                 .verticalScroll(rememberScrollState())
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
-            // In-App RDP Client Info Section
+            // RDP Connection Info Section
             Text(
-                text = "Встроенный RDP клиент",
+                text = "Подключение к серверам RDP",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.primary
             )
@@ -92,25 +92,23 @@ fun SettingsScreen(
                 ) {
                     Row(verticalAlignment = Alignment.CenterVertically) {
                         Icon(
-                            imageVector = Icons.Default.Devices,
+                            imageVector = Icons.Default.Launch,
                             contentDescription = null,
                             tint = MaterialTheme.colorScheme.primary,
                             modifier = Modifier.size(24.dp)
                         )
                         Spacer(modifier = Modifier.width(8.dp))
                         Text(
-                            text = "Прямое подключение к Windows Server",
+                            text = "Прямое подключение к реальному серверу",
                             style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                         )
                     }
                     Text(
-                        text = "При нажатии на любую карточку сервера выберите «Встроенный RDP клиент». Вы получите интерактивный рабочий стол с:\n" +
-                                "• 🖱️ Виртуальным тачпадом с курсором-стрелкой и кнопками L/R\n" +
-                                "• 👆 Режимом прямого касания (Direct Touch)\n" +
-                                "• ⌨️ Системными клавишами Ctrl+Alt+Del, Win, Alt+Tab, F1–F12\n" +
-                                "• ⚡ Интерактивным терминалом PowerShell / CMD\n" +
-                                "• 🔍 Масштабированием pinch-to-zoom (до 3.5x)\n" +
-                                "• 📝 Отправкой текста и буфера обмена в один клик",
+                        text = "При клике на карточку сервера запускается реальное подключение к вашему серверу через установленный RDP-клиент (Microsoft Remote Desktop или aFreeRDP).\n\n" +
+                                "• 🚀 Автоматическая генерация конфигурационного файла .rdp\n" +
+                                "• 🔑 Передача IP, порта, логина, домена и параметров сеанса\n" +
+                                "• 🌐 Проверка доступности порта (TCP Ping онлайн/офлайн)\n" +
+                                "• 📋 Быстрое копирование реквизитов прямо из карточки",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
@@ -171,7 +169,7 @@ fun SettingsScreen(
 
             // External RDP Clients
             Text(
-                text = "Внешние RDP клиенты",
+                text = "Поддерживаемые RDP клиенты",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.primary
             )
@@ -189,7 +187,7 @@ fun SettingsScreen(
                     verticalArrangement = Arrangement.spacedBy(8.dp)
                 ) {
                     Text(
-                        text = "Поддерживаемые внешние приложения:",
+                        text = "Поддерживаемые приложения:",
                         style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
                     )
                     Text(
@@ -234,7 +232,7 @@ fun SettingsScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
                     Text(
-                        text = "Встроенный RDP: TPKT / X.224 / CredSSP / Multi-Window / PowerShell",
+                        text = "RDM Manager: интеграция с MS Remote Desktop и aFreeRDP через .RDP FileProvider",
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.primary
                     )

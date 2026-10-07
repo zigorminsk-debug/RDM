@@ -1,6 +1,5 @@
 package com.rdm.remote.desktop.manager.ui.components
 
-import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.foundation.background
 import androidx.compose.foundation.combinedClickable
@@ -149,15 +148,15 @@ fun ServerCard(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Встроенный RDP-клиент") },
-                            leadingIcon = { Icon(Icons.Default.DesktopWindows, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                            text = { Text("Быстрое подключение RDP") },
+                            leadingIcon = { Icon(Icons.Default.Launch, contentDescription = null, tint = Color(0xFF0078D7)) },
                             onClick = {
                                 showMenu = false
-                                onClick()
+                                RdpLauncher.connectToServer(context, server)
                             }
                         )
                         DropdownMenuItem(
-                            text = { Text("Реквизиты и экспорт .RDP") },
+                            text = { Text("Выбрать способ запуска") },
                             leadingIcon = { Icon(Icons.Default.Devices, contentDescription = null) },
                             onClick = {
                                 showMenu = false
@@ -377,7 +376,7 @@ fun ServerCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Action Buttons: Ping + Direct In-App Connect Button
+            // Action Buttons: Ping + Direct RDP Connect Button
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -407,7 +406,7 @@ fun ServerCard(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Connect Button (Directly launches Embedded In-App RDP Session)
+                // Connect Button (Launches real RDP Connection via Microsoft Remote Desktop / aFreeRDP)
                 Button(
                     onClick = onClick,
                     shape = RoundedCornerShape(12.dp),
@@ -415,7 +414,7 @@ fun ServerCard(
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.DesktopWindows,
+                        imageVector = Icons.Default.Launch,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
