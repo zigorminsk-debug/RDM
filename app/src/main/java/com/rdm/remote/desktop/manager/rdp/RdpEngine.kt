@@ -6,7 +6,6 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
-import org.bouncycastle.jsse.provider.BouncyCastleJsseProvider
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetSocketAddress
@@ -231,37 +230,37 @@ class RdpEngine(
             override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
         })
 
-        var sslContext: SSLContext? = null
-
-        // 1. First priority: BouncyCastle JSSE Provider (Pure Java TLS, ignores non-standard KeyUsage bits in self-signed RDP certs)
-        try {
-            val bcProvider = BouncyCastleJsseProvider()
-            sslContext = SSLContext.getInstance("TLS", bcProvider)
-            sslContext.init(null, trustAllCerts, SecureRandom())
-        } catch (e: Throwable) {
-            sslContext = null
-        }
-
-        // 2. Second priority: Standard TLSv1.2 with RSA ciphers
-        if (sslContext == null) {
-            try {
-                sslContext = SSLContext.getInstance("TLSv1.2")
-                sslContext.init(null, trustAllCerts, SecureRandom())
-            } catch (e: Exception) {
-                sslContext = SSLContext.getInstance("TLS")
-                sslContext.init(null, trustAllCerts, SecureRandom())
+        // Use TLSv1.2: Windows self-signed RDP certs use KeyUsage=keyEncipherment (without digitalSignature)
+        // TLS 1.3 mandates digitalSignature causing BoringSSL KEY_USAGE_BIT_INCORRECT error.
+        // TLS 1.2 with RSA key exchange matches KeyUsage=keyEncipherment perfectly.
+        val sslContext = try {
+            SSLContext.getInstance("TLSv1.2").apply {
+                init(null, trustAllCerts, SecureRandom())
+            }
+        } catch (e: Exception) {
+            SSLContext.getInstance("TLS").apply {
+                init(null, trustAllCerts, SecureRandom())
             }
         }
 
         val ssl = sslContext.socketFactory.createSocket(socket, host, port, true) as SSLSocket
 
-        // Enable broad cipher suites and protocols supported by RDP
         try {
+            // Configure TLS 1.2 and 1.1 protocols
             val supportedProtocols = ssl.supportedProtocols.toList()
-            val preferredProtocols = listOf("TLSv1.3", "TLSv1.2", "TLSv1.1", "TLSv1")
+            val preferredProtocols = listOf("TLSv1.2", "TLSv1.1", "TLSv1")
                 .filter { supportedProtocols.contains(it) }
             if (preferredProtocols.isNotEmpty()) {
                 ssl.enabledProtocols = preferredProtocols.toTypedArray()
+            }
+
+            // Prefer RSA key exchange cipher suites for Windows RDP compatibility
+            val supportedSuites = ssl.supportedCipherSuites
+            val rsaSuites = supportedSuites.filter { suite ->
+                suite.contains("RSA", ignoreCase = true) || suite.contains("AES", ignoreCase = true)
+            }.toTypedArray()
+            if (rsaSuites.isNotEmpty()) {
+                ssl.enabledCipherSuites = rsaSuites
             }
         } catch (ignored: Exception) {}
 
