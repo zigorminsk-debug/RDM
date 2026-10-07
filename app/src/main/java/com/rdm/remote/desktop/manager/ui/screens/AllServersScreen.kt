@@ -70,7 +70,7 @@ fun AllServersScreen(
             RdmSearchBar(
                 query = searchQuery,
                 onQueryChange = { viewModel.setServerSearchQuery(it) },
-                placeholderText = "Поиск по всем серверам, IP, логину...",
+                placeholder = "Поиск по всем серверам, IP, логину...",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
 

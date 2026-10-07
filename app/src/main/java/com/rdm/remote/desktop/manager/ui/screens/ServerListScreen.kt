@@ -16,7 +16,6 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
-import com.rdm.remote.desktop.manager.data.model.ServerEntity
 import com.rdm.remote.desktop.manager.ui.components.RdmSearchBar
 import com.rdm.remote.desktop.manager.ui.components.RdpLaunchDialog
 import com.rdm.remote.desktop.manager.ui.components.ServerCard
@@ -105,7 +104,7 @@ fun ServerListScreen(
             RdmSearchBar(
                 query = searchQuery,
                 onQueryChange = { viewModel.setServerSearchQuery(it) },
-                placeholderText = "Поиск по серверу, IP, логину...",
+                placeholder = "Поиск по серверу, IP, логину...",
                 modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
@@ -192,10 +191,6 @@ fun ServerListScreen(
     launchingServer?.let { server ->
         RdpLaunchDialog(
             server = server,
-            onLaunchInApp = {
-                RdpLauncher.connectToServer(context, it)
-                viewModel.closeRdpLaunchDialog()
-            },
             onDismiss = { viewModel.closeRdpLaunchDialog() }
         )
     }
