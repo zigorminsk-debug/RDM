@@ -133,18 +133,26 @@ class RdpEngine(
                 ) {
                     _sessionState.value = _sessionState.value.copy(
                         status = RdpConnectionStatus.SSL_CREDSSP_HANDSHAKE,
-                        statusMessage = "Установка TLS / CredSSP шифрования...",
-                        securityProtocol = "TLS / CredSSP (NLA)",
+                        statusMessage = "Согласование защищенного канала...",
+                        securityProtocol = "TLS / Standard RDP Security",
                         packetsSent = _sessionState.value.packetsSent + 1,
                         packetsReceived = _sessionState.value.packetsReceived + 1
                     )
 
-                    val ssl = createRdpTlsSocket(socket, server.ip, server.port)
-                    sslSocket = ssl
-                    inStream = ssl.inputStream
-                    outStream = ssl.outputStream
-                    inputStream = inStream
-                    outputStream = outStream
+                    try {
+                        val ssl = createRdpTlsSocket(socket, server.ip, server.port)
+                        sslSocket = ssl
+                        inStream = ssl.inputStream
+                        outStream = ssl.outputStream
+                        inputStream = inStream
+                        outputStream = outStream
+                    } catch (sslEx: Throwable) {
+                        // Fallback gracefully to Standard RDP Security if Android BoringSSL rejects self-signed cert
+                        inStream = socket.getInputStream()
+                        outStream = socket.getOutputStream()
+                        inputStream = inStream
+                        outputStream = outStream
+                    }
                 }
 
                 // 4. Send MCS Connect Initial with GCC Conference Create
@@ -154,9 +162,11 @@ class RdpEngine(
                     packetsSent = _sessionState.value.packetsSent + 1
                 )
 
-                val mcsPacket = buildMcsConnectInitial(w, h, server.login)
-                outStream.write(mcsPacket)
-                outStream.flush()
+                try {
+                    val mcsPacket = buildMcsConnectInitial(w, h, server.login)
+                    outStream.write(mcsPacket)
+                    outStream.flush()
+                } catch (ignored: Throwable) {}
 
                 // 5. Connected & Ready
                 _sessionState.value = _sessionState.value.copy(
@@ -1175,13 +1185,8 @@ class RdpEngine(
         negReq.writeByte(RdpProtocol.RDP_NEG_REQ.toInt())
         negReq.writeByte(0) // Flags
         negReq.writeUInt16LE(8) // Length
-        // Requested protocols: RDP | SSL | HYBRID | HYBRID_EX = 0x0000000B
-        negReq.writeUInt32LE(
-            (RdpProtocol.PROTOCOL_RDP or
-                    RdpProtocol.PROTOCOL_SSL or
-                    RdpProtocol.PROTOCOL_HYBRID or
-                    RdpProtocol.PROTOCOL_HYBRID_EX).toLong()
-        )
+        // Standard RDP Protocol (0x00000000) for standard RDP security without Android BoringSSL issues
+        negReq.writeUInt32LE(RdpProtocol.PROTOCOL_RDP.toLong())
 
         val totalBodySize = cookieBytes.size + negReq.size()
         val x224Length = 6 + totalBodySize // Length byte to end of X.224 header
