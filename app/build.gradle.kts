@@ -75,6 +75,10 @@ android {
     packaging {
         resources {
             excludes += "/META-INF/{AL2.0,LGPL2.1}"
+            excludes += "META-INF/versions/9/OSGI-INF/MANIFEST.MF"
+            excludes += "META-INF/INDEX.LIST"
+            excludes += "META-INF/io.netty.versions.properties"
+            excludes += "META-INF/DEPENDENCIES"
         }
     }
 }
@@ -111,6 +115,10 @@ dependencies {
 
     // JSON Parser for Backup / Export / Import
     implementation("com.google.code.gson:gson:2.10.1")
+
+    // Bouncy Castle for TLS / SSL Handshake with Windows RDP Certificates (Bypasses Android BoringSSL KEY_USAGE_BIT_INCORRECT)
+    implementation("org.bouncycastle:bcprov-jdk18on:1.78.1")
+    implementation("org.bouncycastle:bctls-jdk18on:1.78.1")
 
     // Tooling & Testing
     debugImplementation("androidx.compose.ui:ui-tooling")

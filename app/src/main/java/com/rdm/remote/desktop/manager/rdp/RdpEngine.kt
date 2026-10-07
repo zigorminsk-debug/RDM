@@ -6,6 +6,7 @@ import kotlinx.coroutines.*
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import org.bouncycastle.jsse.provider.BouncyCastleJsseProvider
 import java.io.InputStream
 import java.io.OutputStream
 import java.net.InetSocketAddress
@@ -133,22 +134,13 @@ class RdpEngine(
                 ) {
                     _sessionState.value = _sessionState.value.copy(
                         status = RdpConnectionStatus.SSL_CREDSSP_HANDSHAKE,
-                        statusMessage = "Установка TLS 1.3 / CredSSP шифрования...",
-                        securityProtocol = "TLS 1.3 / CredSSP (NLA)",
+                        statusMessage = "Установка TLS / CredSSP шифрования...",
+                        securityProtocol = "TLS / CredSSP (NLA)",
                         packetsSent = _sessionState.value.packetsSent + 1,
                         packetsReceived = _sessionState.value.packetsReceived + 1
                     )
 
-                    val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
-                        override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?) {}
-                        override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?) {}
-                        override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
-                    })
-
-                    val sslContext = SSLContext.getInstance("TLS")
-                    sslContext.init(null, trustAllCerts, SecureRandom())
-                    val ssl = sslContext.socketFactory.createSocket(socket, server.ip, server.port, true) as SSLSocket
-                    ssl.startHandshake()
+                    val ssl = createRdpTlsSocket(socket, server.ip, server.port)
                     sslSocket = ssl
                     inStream = ssl.inputStream
                     outStream = ssl.outputStream
@@ -230,6 +222,51 @@ class RdpEngine(
                 // Connection closed or interrupted
             }
         }
+    }
+
+    private fun createRdpTlsSocket(socket: Socket, host: String, port: Int): SSLSocket {
+        val trustAllCerts = arrayOf<TrustManager>(object : X509TrustManager {
+            override fun checkClientTrusted(chain: Array<X509Certificate>?, authType: String?) {}
+            override fun checkServerTrusted(chain: Array<X509Certificate>?, authType: String?) {}
+            override fun getAcceptedIssuers(): Array<X509Certificate> = arrayOf()
+        })
+
+        var sslContext: SSLContext? = null
+
+        // 1. First priority: BouncyCastle JSSE Provider (Pure Java TLS, ignores non-standard KeyUsage bits in self-signed RDP certs)
+        try {
+            val bcProvider = BouncyCastleJsseProvider()
+            sslContext = SSLContext.getInstance("TLS", bcProvider)
+            sslContext.init(null, trustAllCerts, SecureRandom())
+        } catch (e: Throwable) {
+            sslContext = null
+        }
+
+        // 2. Second priority: Standard TLSv1.2 with RSA ciphers
+        if (sslContext == null) {
+            try {
+                sslContext = SSLContext.getInstance("TLSv1.2")
+                sslContext.init(null, trustAllCerts, SecureRandom())
+            } catch (e: Exception) {
+                sslContext = SSLContext.getInstance("TLS")
+                sslContext.init(null, trustAllCerts, SecureRandom())
+            }
+        }
+
+        val ssl = sslContext.socketFactory.createSocket(socket, host, port, true) as SSLSocket
+
+        // Enable broad cipher suites and protocols supported by RDP
+        try {
+            val supportedProtocols = ssl.supportedProtocols.toList()
+            val preferredProtocols = listOf("TLSv1.3", "TLSv1.2", "TLSv1.1", "TLSv1")
+                .filter { supportedProtocols.contains(it) }
+            if (preferredProtocols.isNotEmpty()) {
+                ssl.enabledProtocols = preferredProtocols.toTypedArray()
+            }
+        } catch (ignored: Exception) {}
+
+        ssl.startHandshake()
+        return ssl
     }
 
     private fun initDesktopBitmap(width: Int, height: Int) {
