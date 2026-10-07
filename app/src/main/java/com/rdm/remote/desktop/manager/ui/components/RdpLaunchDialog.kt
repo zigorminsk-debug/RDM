@@ -1,10 +1,13 @@
 package com.rdm.remote.desktop.manager.ui.components
 
 import androidx.compose.foundation.background
+import androidx.compose.foundation.border
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.ContentCopy
@@ -33,6 +36,7 @@ fun RdpLaunchDialog(
     val context = LocalContext.current
     val installedClients = remember { RdpLauncher.checkInstalledClients(context) }
     val isAnyClientInstalled = installedClients.any { it.isInstalled }
+    val scrollState = rememberScrollState()
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -62,6 +66,7 @@ fun RdpLaunchDialog(
             Column(
                 modifier = Modifier
                     .fillMaxWidth()
+                    .verticalScroll(scrollState)
                     .padding(vertical = 4.dp),
                 verticalArrangement = Arrangement.spacedBy(10.dp)
             ) {
@@ -128,10 +133,24 @@ fun RdpLaunchDialog(
                     color = MaterialTheme.colorScheme.primary
                 )
 
-                // 1. Primary: Launch MS Remote Desktop (Real remote Windows server session)
+                // 1. #1 Primary: In-App Embedded RDP Client (Встроенный RDP-клиент)
                 LaunchOptionCard(
-                    title = "Подключиться к серверу (MS Remote Desktop)",
-                    subtitle = "Прямой запуск сессии реального сервера в официальном клиенте",
+                    title = "Встроенный RDP-клиент (In-App)",
+                    subtitle = "Прямой интерактивный сеанс в приложении: виртуальный тачпад, клавиатура, горячие клавиши и зум",
+                    icon = Icons.Default.Devices,
+                    color = MaterialTheme.colorScheme.primary,
+                    isFeatured = true,
+                    badgeText = "Встроенный RDP",
+                    onClick = {
+                        onDismiss()
+                        onLaunchInApp(server)
+                    }
+                )
+
+                // 2. Launch MS Remote Desktop (Real remote Windows server session)
+                LaunchOptionCard(
+                    title = "Подключиться (MS Remote Desktop)",
+                    subtitle = "Прямой запуск сессии в официальном клиенте Microsoft Remote Desktop",
                     icon = Icons.Default.Launch,
                     color = Color(0xFF0078D7),
                     onClick = {
@@ -146,10 +165,10 @@ fun RdpLaunchDialog(
                     }
                 )
 
-                // 2. Launch via generic .RDP file (aFreeRDP / Any installed client)
+                // 3. Launch via generic .RDP file (aFreeRDP / Any installed client)
                 LaunchOptionCard(
-                    title = "Открыть через .RDP файл (aFreeRDP / сторонний клиент)",
-                    subtitle = "Экспорт файла настроек в любой установленный RDP-клиент",
+                    title = "Открыть через .RDP файл",
+                    subtitle = "Экспорт файла настроек в aFreeRDP или любой сторонний клиент",
                     icon = Icons.Outlined.OpenInNew,
                     color = Color(0xFF107C41),
                     onClick = {
@@ -158,23 +177,11 @@ fun RdpLaunchDialog(
                     }
                 )
 
-                // 3. In-App Server Management Console & Touchpad
-                LaunchOptionCard(
-                    title = "Встроенная консоль управления (In-App)",
-                    subtitle = "Интерактивная панель PowerShell, тест доступности и тачпад",
-                    icon = Icons.Default.Devices,
-                    color = MaterialTheme.colorScheme.primary,
-                    onClick = {
-                        onDismiss()
-                        onLaunchInApp(server)
-                    }
-                )
-
                 // 4. If no client is installed, offer Play Store install option
                 if (!isAnyClientInstalled) {
                     LaunchOptionCard(
                         title = "Установить MS Remote Desktop",
-                        subtitle = "Скачать из Google Play для прямого подключения",
+                        subtitle = "Скачать из Google Play для внешнего подключения",
                         icon = Icons.Default.Download,
                         color = MaterialTheme.colorScheme.tertiary,
                         onClick = {
@@ -201,14 +208,23 @@ private fun LaunchOptionCard(
     subtitle: String,
     icon: ImageVector,
     color: Color,
+    isFeatured: Boolean = false,
+    badgeText: String? = null,
     onClick: () -> Unit
 ) {
     Surface(
-        shape = RoundedCornerShape(12.dp),
-        color = color.copy(alpha = 0.12f),
+        shape = RoundedCornerShape(14.dp),
+        color = if (isFeatured) color.copy(alpha = 0.16f) else color.copy(alpha = 0.09f),
         modifier = Modifier
             .fillMaxWidth()
-            .clip(RoundedCornerShape(12.dp))
+            .clip(RoundedCornerShape(14.dp))
+            .then(
+                if (isFeatured) {
+                    Modifier.border(1.5.dp, color.copy(alpha = 0.6f), RoundedCornerShape(14.dp))
+                } else {
+                    Modifier
+                }
+            )
             .clickable(onClick = onClick)
     ) {
         Row(
@@ -219,31 +235,54 @@ private fun LaunchOptionCard(
         ) {
             Box(
                 modifier = Modifier
-                    .size(40.dp)
+                    .size(42.dp)
                     .clip(CircleShape)
-                    .background(color.copy(alpha = 0.2f)),
+                    .background(color.copy(alpha = 0.22f)),
                 contentAlignment = Alignment.Center
             ) {
                 Icon(
                     imageVector = icon,
                     contentDescription = null,
                     tint = color,
-                    modifier = Modifier.size(22.dp)
+                    modifier = Modifier.size(24.dp)
                 )
             }
             Spacer(modifier = Modifier.width(12.dp))
             Column(modifier = Modifier.weight(1f)) {
-                Text(
-                    text = title,
-                    style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
-                    color = MaterialTheme.colorScheme.onSurface
-                )
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(
+                        text = title,
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold),
+                        color = MaterialTheme.colorScheme.onSurface,
+                        modifier = Modifier.weight(1f, fill = false)
+                    )
+                    if (badgeText != null) {
+                        Spacer(modifier = Modifier.width(6.dp))
+                        Surface(
+                            shape = RoundedCornerShape(4.dp),
+                            color = color,
+                            modifier = Modifier.padding(bottom = 2.dp)
+                        ) {
+                            Text(
+                                text = badgeText,
+                                style = MaterialTheme.typography.labelSmall.copy(
+                                    fontWeight = FontWeight.ExtraBold,
+                                    fontSize = 9.sp
+                                ),
+                                color = MaterialTheme.colorScheme.onPrimary,
+                                modifier = Modifier.padding(horizontal = 4.dp, vertical = 1.dp)
+                            )
+                        }
+                    }
+                }
+                Spacer(modifier = Modifier.height(2.dp))
                 Text(
                     text = subtitle,
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant
                 )
             }
+            Spacer(modifier = Modifier.width(6.dp))
             Icon(
                 imageVector = Icons.Default.ChevronRight,
                 contentDescription = null,

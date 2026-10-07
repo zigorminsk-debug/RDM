@@ -148,19 +148,19 @@ fun ServerCard(
                         onDismissRequest = { showMenu = false }
                     ) {
                         DropdownMenuItem(
-                            text = { Text("Быстрое подключение RDP") },
+                            text = { Text("Способ подключения RDP") },
+                            leadingIcon = { Icon(Icons.Default.Devices, contentDescription = null, tint = MaterialTheme.colorScheme.primary) },
+                            onClick = {
+                                showMenu = false
+                                onClick()
+                            }
+                        )
+                        DropdownMenuItem(
+                            text = { Text("Внешний MS Remote Desktop") },
                             leadingIcon = { Icon(Icons.Default.Launch, contentDescription = null, tint = Color(0xFF0078D7)) },
                             onClick = {
                                 showMenu = false
                                 RdpLauncher.connectToServer(context, server)
-                            }
-                        )
-                        DropdownMenuItem(
-                            text = { Text("Параметры запуска") },
-                            leadingIcon = { Icon(Icons.Default.DesktopWindows, contentDescription = null) },
-                            onClick = {
-                                showMenu = false
-                                onClick()
                             }
                         )
                         DropdownMenuItem(
@@ -376,7 +376,7 @@ fun ServerCard(
 
             Spacer(modifier = Modifier.height(10.dp))
 
-            // Action Buttons: Ping + Direct Connect Button (Как в RDM)
+            // Action Buttons: Ping + Connect Button (opens Launch Dialog with In-App & External options)
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 verticalAlignment = Alignment.CenterVertically,
@@ -406,17 +406,15 @@ fun ServerCard(
 
                 Spacer(modifier = Modifier.width(8.dp))
 
-                // Direct RDP Connect Button (Как в RDM: запускает сессию реального сервера)
+                // Connect Button (Triggers Dialog with In-App Client & MS Remote Desktop)
                 Button(
-                    onClick = {
-                        RdpLauncher.connectToServer(context, server)
-                    },
+                    onClick = onClick,
                     shape = RoundedCornerShape(12.dp),
                     colors = ButtonDefaults.buttonColors(containerColor = accentColor),
                     contentPadding = PaddingValues(horizontal = 16.dp, vertical = 8.dp)
                 ) {
                     Icon(
-                        imageVector = Icons.Default.Launch,
+                        imageVector = Icons.Default.DesktopWindows,
                         contentDescription = null,
                         modifier = Modifier.size(18.dp)
                     )
