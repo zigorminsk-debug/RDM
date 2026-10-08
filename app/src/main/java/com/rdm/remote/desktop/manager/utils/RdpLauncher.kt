@@ -96,46 +96,55 @@ object RdpLauncher {
     }
 
     /**
+     * Splits user input into clean username and domain.
+     * Supports formats: "DOMAIN\user" and "user@domain.com".
+     */
+    fun extractCredentials(rawLogin: String, rawDomain: String): Pair<String, String> {
+        val trimmedLogin = rawLogin.trim()
+        val trimmedDomain = rawDomain.trim()
+
+        return when {
+            trimmedLogin.contains("\\") -> {
+                val parts = trimmedLogin.split("\\", limit = 2)
+                Pair(parts[1].trim(), parts[0].trim())
+            }
+            trimmedLogin.contains("@") -> {
+                val parts = trimmedLogin.split("@", limit = 2)
+                Pair(parts[0].trim(), parts[1].trim())
+            }
+            else -> {
+                Pair(trimmedLogin, trimmedDomain)
+            }
+        }
+    }
+
+    /**
      * Builds freerdp:// URI for native aFreeRDP SessionActivity
      * Syntax: freerdp://[user@]ip:port/connect?u=user&d=domain&p=password&sound=&clipboard=
      */
     fun buildFreeRdpUri(server: ServerEntity): Uri {
-        val host = server.ip
+        val host = server.ip.trim()
         val port = if (server.port > 0) server.port else 3389
-        val effectiveLogin = server.login.trim()
-        val effectiveDomain = server.domain.trim()
-
-        val userInfo = when {
-            effectiveDomain.isNotBlank() && effectiveLogin.isNotBlank() -> {
-                if (effectiveLogin.contains("\\")) effectiveLogin else "$effectiveDomain\\$effectiveLogin"
-            }
-            effectiveLogin.isNotBlank() -> effectiveLogin
-            else -> null
-        }
+        val (cleanUser, cleanDomain) = extractCredentials(server.login, server.domain)
 
         val uriBuilder = Uri.Builder()
             .scheme("freerdp")
-            .authority(if (userInfo != null) "$userInfo@$host:$port" else "$host:$port")
+            .authority(if (port != 3389) "$host:$port" else host)
             .path("/connect")
             .appendQueryParameter("v", if (port != 3389) "$host:$port" else host)
             .appendQueryParameter("gdi", "sw")
 
-        // Pass user explicitly as query param for robust aFreeRDP argument parsing (/u:)
-        if (effectiveLogin.isNotBlank()) {
-            val userParam = if (effectiveDomain.isNotBlank() && !effectiveLogin.contains("\\")) {
-                "$effectiveDomain\\$effectiveLogin"
-            } else {
-                effectiveLogin
-            }
-            uriBuilder.appendQueryParameter("u", userParam)
+        // User parameter (/u:cleanUser)
+        if (cleanUser.isNotBlank()) {
+            uriBuilder.appendQueryParameter("u", cleanUser)
         }
 
-        // Pass domain explicitly (/d:)
-        if (effectiveDomain.isNotBlank()) {
-            uriBuilder.appendQueryParameter("d", effectiveDomain)
+        // Domain parameter (/d:cleanDomain)
+        if (cleanDomain.isNotBlank()) {
+            uriBuilder.appendQueryParameter("d", cleanDomain)
         }
 
-        // Pass password explicitly (/p:)
+        // Password parameter (/p:password)
         if (server.password.isNotBlank()) {
             uriBuilder.appendQueryParameter("p", server.password)
         }
@@ -176,6 +185,7 @@ object RdpLauncher {
     fun generateRdpFileContent(server: ServerEntity): String {
         val sb = StringBuilder()
         val address = if (server.port > 0 && server.port != 3389) "${server.ip}:${server.port}" else server.ip
+        val (cleanUser, cleanDomain) = extractCredentials(server.login, server.domain)
 
         sb.appendLine("screen mode id:i:2")
         sb.appendLine("use multimon:i:0")
@@ -207,11 +217,11 @@ object RdpLauncher {
         sb.appendLine("remoteapplicationmode:i:0")
         sb.appendLine("administrative session:i:${if (server.adminSession) 1 else 0}")
 
-        if (server.login.isNotBlank()) {
-            sb.appendLine("username:s:${server.login}")
+        if (cleanUser.isNotBlank()) {
+            sb.appendLine("username:s:$cleanUser")
         }
-        if (server.domain.isNotBlank()) {
-            sb.appendLine("domain:s:${server.domain}")
+        if (cleanDomain.isNotBlank()) {
+            sb.appendLine("domain:s:$cleanDomain")
         }
 
         return sb.toString()
