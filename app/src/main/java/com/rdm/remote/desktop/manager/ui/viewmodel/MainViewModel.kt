@@ -184,8 +184,8 @@ class MainViewModel(private val repository: RdmRepository) : ViewModel() {
     fun confirmDeleteClient() {
         val clientWithCount = _deletingClient.value ?: return
         viewModelScope.launch {
-            repository.deleteClientById(clientWithCount.client.id)
-            _userMessage.emit("Клиент «${clientWithCount.client.name}» и все его серверы удалены")
+            repository.deleteClientById(clientWithCount.id)
+            _userMessage.emit("Клиент «${clientWithCount.name}» и все его серверы удалены")
             dismissDeleteClient()
         }
     }
