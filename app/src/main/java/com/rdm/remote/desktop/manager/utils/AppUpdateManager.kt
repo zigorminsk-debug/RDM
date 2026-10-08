@@ -88,10 +88,9 @@ object AppUpdateManager {
                 val currentVersion = BuildConfig.VERSION_NAME.trim()
 
                 if (isNewerVersion(latestTag, currentVersion)) {
-                    // Find APK asset or fallback to release page
+                    // Find APK asset
                     val apkAsset = release.assets?.firstOrNull { it.name.endsWith(".apk", ignoreCase = true) }
-                    val downloadUrl = apkAsset?.browserDownloadUrl
-                        ?: "https://github.com/$GITHUB_REPO/releases/download/$latestTag/RDM-$latestTag-signed.apk"
+                    val downloadUrl = apkAsset?.browserDownloadUrl ?: ""
 
                     val status = UpdateStatus.UpdateAvailable(
                         newVersion = latestTag.removePrefix("v"),
@@ -122,6 +121,11 @@ object AppUpdateManager {
      * Downloads APK from GitHub release and triggers native Android package installer
      */
     suspend fun downloadAndInstallApk(context: Context, downloadUrl: String, versionName: String) = withContext(Dispatchers.IO) {
+        if (downloadUrl.isBlank()) {
+            _updateStatus.value = UpdateStatus.Error("Файл APK ещё формируется на сервере GitHub. Пожалуйста, повторите попытку через минуту.")
+            return@withContext
+        }
+
         _updateStatus.value = UpdateStatus.Downloading(0)
 
         try {
