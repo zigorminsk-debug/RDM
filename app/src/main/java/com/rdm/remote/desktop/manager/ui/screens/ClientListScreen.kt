@@ -9,6 +9,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -16,6 +17,7 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rdm.remote.desktop.manager.ui.components.ClientCard
 import com.rdm.remote.desktop.manager.ui.components.ClientEditDialog
 import com.rdm.remote.desktop.manager.ui.components.RdmSearchBar
+import com.rdm.remote.desktop.manager.ui.components.UpdateDialog
 import com.rdm.remote.desktop.manager.ui.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -26,10 +28,17 @@ fun ClientListScreen(
     onAllServersClick: () -> Unit,
     onSettingsClick: () -> Unit
 ) {
+    val context = LocalContext.current
     val clients by viewModel.clients.collectAsStateWithLifecycle()
     val searchQuery by viewModel.clientSearchQuery.collectAsStateWithLifecycle()
     val editingClient by viewModel.editingClient.collectAsStateWithLifecycle()
     val deletingClient by viewModel.deletingClient.collectAsStateWithLifecycle()
+    val updateStatus by viewModel.updateStatus.collectAsStateWithLifecycle()
+
+    // Automatically check for updates silently on startup
+    LaunchedEffect(Unit) {
+        viewModel.checkForUpdates(silentIfUpToDate = true)
+    }
 
     Scaffold(
         topBar = {
@@ -50,6 +59,13 @@ fun ClientListScreen(
                     }
                 },
                 actions = {
+                    IconButton(onClick = { viewModel.checkForUpdates(silentIfUpToDate = false) }) {
+                        Icon(
+                            imageVector = Icons.Default.SystemUpdate,
+                            contentDescription = "Проверить обновления",
+                            tint = MaterialTheme.colorScheme.primary
+                        )
+                    }
                     IconButton(onClick = onAllServersClick) {
                         Icon(
                             imageVector = Icons.Default.Computer,
@@ -89,56 +105,43 @@ fun ClientListScreen(
             RdmSearchBar(
                 query = searchQuery,
                 onQueryChange = { viewModel.setClientSearchQuery(it) },
-                placeholder = "Поиск клиента или описания..."
+                placeholder = "Поиск по клиентам и проектам...",
+                modifier = Modifier.padding(horizontal = 16.dp, vertical = 8.dp)
             )
 
-            // Hint Text
-            Text(
-                text = "Нажмите на клиента, чтобы открыть список серверов. Долгое нажатие — редактировать.",
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                modifier = Modifier.padding(horizontal = 16.dp, vertical = 2.dp)
-            )
-
-            Spacer(modifier = Modifier.height(6.dp))
-
-            // Client List or Empty State
+            // Content List
             if (clients.isEmpty()) {
                 Box(
                     modifier = Modifier
                         .fillMaxSize()
-                        .padding(24.dp),
+                        .padding(32.dp),
                     contentAlignment = Alignment.Center
                 ) {
                     Column(
                         horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.Center
+                        verticalArrangement = Arrangement.spacedBy(16.dp)
                     ) {
                         Icon(
-                            imageVector = Icons.Default.FolderShared,
+                            imageVector = Icons.Default.FolderOpen,
                             contentDescription = null,
-                            tint = MaterialTheme.colorScheme.primary.copy(alpha = 0.5f),
-                            modifier = Modifier.size(72.dp)
+                            modifier = Modifier.size(64.dp),
+                            tint = MaterialTheme.colorScheme.outline
                         )
-                        Spacer(modifier = Modifier.height(16.dp))
                         Text(
-                            text = if (searchQuery.isNotBlank()) "Клиенты не найдены" else "Список клиентов пуст",
-                            style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
-                            color = MaterialTheme.colorScheme.onSurface
-                        )
-                        Spacer(modifier = Modifier.height(8.dp))
-                        Text(
-                            text = if (searchQuery.isNotBlank()) "Попробуйте изменить поисковый запрос" else "Добавьте первого клиента или загрузите демо-данные для быстрого старта",
-                            style = MaterialTheme.typography.bodyMedium,
-                            color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            textAlign = TextAlign.Center
+                            text = if (searchQuery.isBlank()) {
+                                "Список клиентов пуст.\nДобавьте первого клиента или загрузите примеры в Настройках."
+                            } else {
+                                "Ничего не найдено по запросу «$searchQuery»"
+                            },
+                            style = MaterialTheme.typography.bodyLarge,
+                            textAlign = TextAlign.Center,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
                         )
                         if (searchQuery.isBlank()) {
-                            Spacer(modifier = Modifier.height(20.dp))
-                            Button(onClick = { viewModel.loadDemoData() }) {
-                                Icon(Icons.Default.CloudDownload, contentDescription = null)
+                            Button(onClick = { viewModel.openAddClientDialog() }) {
+                                Icon(Icons.Default.Add, contentDescription = null)
                                 Spacer(modifier = Modifier.width(8.dp))
-                                Text("Загрузить демо-данные")
+                                Text("Создать клиента")
                             }
                         }
                     }
@@ -199,4 +202,16 @@ fun ClientListScreen(
             }
         )
     }
+
+    // Update Dialog
+    UpdateDialog(
+        status = updateStatus,
+        onDismiss = { viewModel.dismissUpdateDialog() },
+        onDownloadAndInstall = { downloadUrl, versionName ->
+            viewModel.downloadAndInstallUpdate(context, downloadUrl, versionName)
+        },
+        onInstallLocalFile = {
+            viewModel.installDownloadedUpdate(context)
+        }
+    )
 }

@@ -1,5 +1,6 @@
 package com.rdm.remote.desktop.manager.ui.viewmodel
 
+import android.content.Context
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.viewModelScope
@@ -7,6 +8,8 @@ import com.rdm.remote.desktop.manager.data.model.ClientEntity
 import com.rdm.remote.desktop.manager.data.model.ClientWithCount
 import com.rdm.remote.desktop.manager.data.model.ServerEntity
 import com.rdm.remote.desktop.manager.data.repository.RdmRepository
+import com.rdm.remote.desktop.manager.utils.AppUpdateManager
+import com.rdm.remote.desktop.manager.utils.UpdateStatus
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.flow.*
@@ -53,28 +56,30 @@ class MainViewModel(private val repository: RdmRepository) : ViewModel() {
         }
     }.stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
+    // ----------------- All Servers (Search across all) -----------------
+
     val allServers: StateFlow<List<ServerEntity>> = _serverSearchQuery
         .flatMapLatest { query ->
             repository.searchAllServers(query)
         }
         .stateIn(viewModelScope, SharingStarted.WhileSubscribed(5000), emptyList())
 
-    // ----------------- Ping / Status State -----------------
+    // ----------------- Ping / Status Test Results -----------------
 
-    private val _pingResults = MutableStateFlow<Map<Long, Boolean?>>(emptyMap())
-    val pingResults: StateFlow<Map<Long, Boolean?>> = _pingResults.asStateFlow()
+    private val _pingResults = MutableStateFlow<Map<Long, Boolean>>(emptyMap())
+    val pingResults: StateFlow<Map<Long, Boolean>> = _pingResults.asStateFlow()
 
     // ----------------- Dialog UI States -----------------
 
-    // Client dialog (null = closed, ClientEntity with id 0 = create, id > 0 = edit)
+    // Edit Client Dialog (null = closed)
     private val _editingClient = MutableStateFlow<ClientEntity?>(null)
     val editingClient: StateFlow<ClientEntity?> = _editingClient.asStateFlow()
 
-    // Server dialog (null = closed, ServerEntity with id 0 = create, id > 0 = edit)
+    // Edit Server Dialog (null = closed)
     private val _editingServer = MutableStateFlow<ServerEntity?>(null)
     val editingServer: StateFlow<ServerEntity?> = _editingServer.asStateFlow()
 
-    // RDP Launch Dialog (null = closed, ServerEntity = open)
+    // Launch Dialog (null = closed)
     private val _launchingServer = MutableStateFlow<ServerEntity?>(null)
     val launchingServer: StateFlow<ServerEntity?> = _launchingServer.asStateFlow()
 
@@ -90,6 +95,33 @@ class MainViewModel(private val repository: RdmRepository) : ViewModel() {
     private val _userMessage = MutableSharedFlow<String>()
     val userMessage: SharedFlow<String> = _userMessage.asSharedFlow()
 
+    // ----------------- App Updates -----------------
+
+    val updateStatus: StateFlow<UpdateStatus> = AppUpdateManager.updateStatus
+
+    fun checkForUpdates(silentIfUpToDate: Boolean = false) {
+        viewModelScope.launch {
+            AppUpdateManager.checkForUpdates(silentIfUpToDate)
+        }
+    }
+
+    fun dismissUpdateDialog() {
+        AppUpdateManager.resetStatus()
+    }
+
+    fun downloadAndInstallUpdate(context: Context, downloadUrl: String, versionName: String) {
+        viewModelScope.launch {
+            AppUpdateManager.downloadAndInstallApk(context, downloadUrl, versionName)
+        }
+    }
+
+    fun installDownloadedUpdate(context: Context) {
+        val current = AppUpdateManager.updateStatus.value
+        if (current is UpdateStatus.ReadyToInstall) {
+            AppUpdateManager.installApk(context, current.apkFile)
+        }
+    }
+
     // ----------------- Search Actions -----------------
 
     fun setClientSearchQuery(query: String) {
@@ -102,17 +134,21 @@ class MainViewModel(private val repository: RdmRepository) : ViewModel() {
 
     fun selectClient(clientId: Long) {
         _selectedClientId.value = clientId
-        _serverSearchQuery.value = ""
     }
 
-    fun observeServerById(id: Long): Flow<ServerEntity?> {
-        return repository.observeServerById(id)
+    fun observeServerById(serverId: Long): Flow<ServerEntity?> {
+        return repository.observeServerById(serverId)
     }
 
-    // ----------------- Client CRUD Actions -----------------
+    // ----------------- Client CRUD Operations -----------------
 
     fun openAddClientDialog() {
-        _editingClient.value = ClientEntity(name = "")
+        _editingClient.value = ClientEntity(
+            id = 0,
+            name = "",
+            description = "",
+            colorHex = "#0078D7"
+        )
     }
 
     fun openEditClientDialog(client: ClientEntity) {
@@ -127,25 +163,13 @@ class MainViewModel(private val repository: RdmRepository) : ViewModel() {
         val current = _editingClient.value ?: return
         viewModelScope.launch {
             if (current.id == 0L) {
-                repository.insertClient(
-                    ClientEntity(
-                        name = name.trim(),
-                        description = description.trim(),
-                        colorHex = colorHex
-                    )
-                )
-                _userMessage.emit("Клиент «$name» создан")
+                repository.insertClient(current.copy(name = name, description = description, colorHex = colorHex))
+                _userMessage.emit("Клиент «$name» успешно добавлен")
             } else {
-                repository.updateClient(
-                    current.copy(
-                        name = name.trim(),
-                        description = description.trim(),
-                        colorHex = colorHex
-                    )
-                )
-                _userMessage.emit("Клиент «$name» обновлен")
+                repository.updateClient(current.copy(name = name, description = description, colorHex = colorHex))
+                _userMessage.emit("Данные клиента «$name» обновлены")
             }
-            _editingClient.value = null
+            closeClientDialog()
         }
     }
 
@@ -158,22 +182,28 @@ class MainViewModel(private val repository: RdmRepository) : ViewModel() {
     }
 
     fun confirmDeleteClient() {
-        val target = _deletingClient.value ?: return
+        val clientWithCount = _deletingClient.value ?: return
         viewModelScope.launch {
-            repository.deleteClientById(target.id)
-            _userMessage.emit("Клиент «${target.name}» удален")
-            _deletingClient.value = null
+            repository.deleteClientById(clientWithCount.client.id)
+            _userMessage.emit("Клиент «${clientWithCount.client.name}» и все его серверы удалены")
+            dismissDeleteClient()
         }
     }
 
-    // ----------------- Server CRUD Actions -----------------
+    // ----------------- Server CRUD Operations -----------------
 
     fun openAddServerDialog(clientId: Long) {
         _editingServer.value = ServerEntity(
+            id = 0,
             clientId = clientId,
             name = "",
             ip = "",
-            port = 3389
+            port = 3389,
+            login = "",
+            password = "",
+            domain = "",
+            notes = "",
+            colorHex = "#0078D7"
         )
     }
 
@@ -200,40 +230,40 @@ class MainViewModel(private val repository: RdmRepository) : ViewModel() {
     ) {
         val current = _editingServer.value ?: return
         viewModelScope.launch {
-            val updated = current.copy(
-                name = name.trim(),
-                ip = ip.trim(),
-                port = if (port > 0) port else 3389,
-                domain = domain.trim(),
-                login = login.trim(),
+            val serverToSave = current.copy(
+                name = name,
+                ip = ip,
+                port = port,
+                domain = domain,
+                login = login,
                 password = password,
-                notes = notes.trim(),
+                notes = notes,
                 resolution = resolution,
                 soundRedirection = soundRedirection,
                 adminSession = adminSession,
                 colorHex = colorHex
             )
             if (current.id == 0L) {
-                repository.insertServer(updated)
-                _userMessage.emit("Сервер «$name» добавлен")
+                repository.insertServer(serverToSave)
+                _userMessage.emit("Сервер «$name» успешно добавлен")
             } else {
-                repository.updateServer(updated)
-                _userMessage.emit("Сервер «$name» сохранен")
+                repository.updateServer(serverToSave)
+                _userMessage.emit("Настройки сервера «$name» сохранены")
             }
-            _editingServer.value = null
+            closeServerDialog()
         }
     }
 
     fun duplicateServer(server: ServerEntity) {
         viewModelScope.launch {
-            val copy = server.copy(
+            val duplicate = server.copy(
                 id = 0,
                 name = "${server.name} (Копия)",
                 createdAt = System.currentTimeMillis(),
                 updatedAt = System.currentTimeMillis()
             )
-            repository.insertServer(copy)
-            _userMessage.emit("Сервер продублирован")
+            repository.insertServer(duplicate)
+            _userMessage.emit("Создана копия сервера «${server.name}»")
         }
     }
 
@@ -246,15 +276,15 @@ class MainViewModel(private val repository: RdmRepository) : ViewModel() {
     }
 
     fun confirmDeleteServer() {
-        val target = _deletingServer.value ?: return
+        val server = _deletingServer.value ?: return
         viewModelScope.launch {
-            repository.deleteServerById(target.id)
-            _userMessage.emit("Сервер «${target.name}» удален")
-            _deletingServer.value = null
+            repository.deleteServer(server)
+            _userMessage.emit("Сервер «${server.name}» удален")
+            dismissDeleteServer()
         }
     }
 
-    // ----------------- RDP Launch Dialog Actions -----------------
+    // ----------------- RDP Launch Dialog -----------------
 
     fun openRdpLaunchDialog(server: ServerEntity) {
         _launchingServer.value = server

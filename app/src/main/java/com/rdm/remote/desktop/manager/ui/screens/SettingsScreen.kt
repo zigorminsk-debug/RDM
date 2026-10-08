@@ -24,7 +24,9 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.rdm.remote.desktop.manager.BuildConfig
+import com.rdm.remote.desktop.manager.ui.components.UpdateDialog
 import com.rdm.remote.desktop.manager.ui.viewmodel.MainViewModel
 
 @OptIn(ExperimentalMaterial3Api::class)
@@ -39,6 +41,7 @@ fun SettingsScreen(
     var showExportDialog by remember { mutableStateOf(false) }
     var exportedJsonText by remember { mutableStateOf("") }
     var importJsonText by remember { mutableStateOf("") }
+    val updateStatus by viewModel.updateStatus.collectAsStateWithLifecycle()
 
     Scaffold(
         topBar = {
@@ -71,6 +74,31 @@ fun SettingsScreen(
                 .padding(16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp)
         ) {
+            // Update Section
+            Text(
+                text = "Обновления",
+                style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
+                color = MaterialTheme.colorScheme.primary
+            )
+
+            Card(
+                shape = RoundedCornerShape(16.dp),
+                colors = CardDefaults.cardColors(
+                    containerColor = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.5f)
+                )
+            ) {
+                Column(modifier = Modifier.fillMaxWidth()) {
+                    SettingsRow(
+                        icon = Icons.Default.SystemUpdate,
+                        title = "Проверить обновления",
+                        subtitle = "Поиск новой версии на GitHub Releases",
+                        onClick = {
+                            viewModel.checkForUpdates(silentIfUpToDate = false)
+                        }
+                    )
+                }
+            }
+
             // RDP Connection Info Section
             Text(
                 text = "Подключение к серверам RDP",
@@ -377,6 +405,18 @@ fun SettingsScreen(
             }
         )
     }
+
+    // Update Dialog
+    UpdateDialog(
+        status = updateStatus,
+        onDismiss = { viewModel.dismissUpdateDialog() },
+        onDownloadAndInstall = { downloadUrl, versionName ->
+            viewModel.downloadAndInstallUpdate(context, downloadUrl, versionName)
+        },
+        onInstallLocalFile = {
+            viewModel.installDownloadedUpdate(context)
+        }
+    )
 }
 
 @Composable
