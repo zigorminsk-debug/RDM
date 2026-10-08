@@ -98,40 +98,20 @@ jobs:
           TAG="v${{ env.VERSION_NAME }}"
           TITLE="RDM Release v${{ env.VERSION_NAME }} (Build ${{ env.VERSION_CODE }})"
           
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f "$TAG" "${{ github.sha }}" || true
-          git push -f origin "$TAG" || true
-
-          APK_FILE="release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
-          if [ ! -f "$APK_FILE" ]; then
-            for f in release-output/*.apk; do
-              if [ -f "$f" ]; then
-                APK_FILE="$f"
-                break
-              fi
-            done
-          fi
-
-          echo "Publishing release $TAG with asset $APK_FILE"
-          ls -la release-output/
-
-          gh release create "$TAG" \
+          gh release create "$TAG" release-output/*.apk \
+            --target "${{ github.sha }}" \
             --title "$TITLE" \
             --notes "### 🚀 Remote Desktop Manager (RDM) Android v${{ env.VERSION_NAME }}
           
-**Номер сборки**: \`${{ env.VERSION_CODE }}\`
+          **Номер сборки**: \`${{ env.VERSION_CODE }}\`
           
-#### 📦 Что включено:
-- 🐧 **Интеграция с открытым FreeRDP (aFreeRDP)**:
-  - Прямой запуск сессии через схему \`freerdp://\` и \`SessionActivity\`.
-  - Генерация конфигурационного файла \`.rdp\` с поддержкой NLA, буфера обмена и звука.
-  - Определение статуса установки aFreeRDP и ссылка на быструю установку с F-Droid.
-- 🔄 **Автообновление из GitHub**: автоматическая проверка при старте и по кнопке, прямое скачивание APK и бесшовная установка поверх.
-- 🔑 **Постоянный ключ подписи (Release Keystore)**: обновление поверх без удаления приложения и потери данных.
-- 🏢 **Иерархия клиентов и серверов**: группировка, поиск и пинг портов (TCP Ping).
+          #### 📦 Что включено:
+          - 🔑 **Постоянный ключ подписи (Release Keystore)**: обновление поверх без удаления приложения.
+          - 🏢 **Иерархия клиентов и серверов**: список клиентов -> карточки серверов при клике.
+          - ⚡ **RDP запуск**: клик на карточку запускает RDP подключение (MS Remote Desktop, aFreeRDP, .rdp файл).
+          - ✏️ **Редактирование серверов**: долгое нажатие открывает модальное окно со всеми полями.
+          - 💾 **Экспорт и импорт**: полное резервное копирование в JSON.
+          - 🌐 **Проверка доступности**: встроенный TCP Ping.
           
-#### 📥 Скачать APK:
-- Скачайте файл \`RDM-v${{ env.VERSION_NAME }}-signed.apk\` ниже." || true
-
-          gh release upload "$TAG" "$APK_FILE" --clobber
+          #### 📥 Скачать APK:
+          - Скачайте \`RDM-v${{ env.VERSION_NAME }}-signed.apk\` ниже." || true
