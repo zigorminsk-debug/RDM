@@ -197,7 +197,7 @@ fun SettingsScreen(
 
             // External RDP Clients
             Text(
-                text = "Поддерживаемые RDP клиенты",
+                text = "Open Source RDP клиент (FreeRDP / aFreeRDP)",
                 style = MaterialTheme.typography.titleMedium.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.colorScheme.primary
             )
@@ -212,17 +212,45 @@ fun SettingsScreen(
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(16.dp),
-                    verticalArrangement = Arrangement.spacedBy(8.dp)
+                    verticalArrangement = Arrangement.spacedBy(10.dp)
                 ) {
                     Text(
-                        text = "Поддерживаемые приложения:",
-                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.SemiBold)
+                        text = "Открытый движок FreeRDP",
+                        style = MaterialTheme.typography.titleSmall.copy(fontWeight = FontWeight.Bold)
                     )
                     Text(
-                        text = "• Microsoft Remote Desktop (официальный клиент от Microsoft)\n• aFreeRDP (с открытым исходным кодом)\n• Любой Android клиент, поддерживающий файлы .rdp и протокол rdp://",
+                        text = "В RDM встроена интеграция с открытым проектом aFreeRDP (Apache 2.0). " +
+                                "Сессия запускается по стандартному протоколу с полной передачей параметров, учетных данных и графических кодеков.",
                         style = MaterialTheme.typography.bodyMedium,
                         color = MaterialTheme.colorScheme.onSurfaceVariant
                     )
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp)
+                    ) {
+                        OutlinedButton(
+                            onClick = {
+                                com.rdm.remote.desktop.manager.utils.RdpLauncher.openUrl(
+                                    context,
+                                    com.rdm.remote.desktop.manager.utils.RdpLauncher.URL_AFREERDP_FDROID
+                                )
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("Скачать F-Droid", style = MaterialTheme.typography.labelMedium)
+                        }
+                        OutlinedButton(
+                            onClick = {
+                                com.rdm.remote.desktop.manager.utils.RdpLauncher.openUrl(
+                                    context,
+                                    com.rdm.remote.desktop.manager.utils.RdpLauncher.URL_AFREERDP_GITHUB
+                                )
+                            },
+                            modifier = Modifier.weight(1f)
+                        ) {
+                            Text("GitHub FreeRDP", style = MaterialTheme.typography.labelMedium)
+                        }
+                    }
                 }
             }
 

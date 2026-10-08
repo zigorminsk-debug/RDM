@@ -15,15 +15,19 @@ import java.net.URLEncoder
 
 object RdpLauncher {
 
+    const val PKG_AFREERDP = "com.freerdp.afreerdp"
     const val PKG_MS_RDC_1 = "com.microsoft.rdc.android"
     const val PKG_MS_RDC_2 = "com.microsoft.rdc.androidx"
     const val PKG_MS_RDC_BETA = "com.microsoft.rdc.android.beta"
-    const val PKG_AFREERDP = "com.freerdp.afreerdp"
+
+    const val URL_AFREERDP_FDROID = "https://f-droid.org/packages/com.freerdp.afreerdp/"
+    const val URL_AFREERDP_GITHUB = "https://github.com/FreeRDP/FreeRDP"
 
     data class InstalledClient(
         val packageName: String,
         val appName: String,
-        val isInstalled: Boolean
+        val isInstalled: Boolean,
+        val isOpenSource: Boolean = false
     )
 
     /**
@@ -31,14 +35,23 @@ object RdpLauncher {
      */
     fun checkInstalledClients(context: Context): List<InstalledClient> {
         val pm = context.packageManager
-        val knownClients = listOf(
-            InstalledClient(PKG_MS_RDC_1, "Microsoft Remote Desktop", isAppInstalled(pm, PKG_MS_RDC_1) || isAppInstalled(pm, PKG_MS_RDC_2) || isAppInstalled(pm, PKG_MS_RDC_BETA)),
-            InstalledClient(PKG_AFREERDP, "aFreeRDP", isAppInstalled(pm, PKG_AFREERDP))
+        return listOf(
+            InstalledClient(
+                packageName = PKG_AFREERDP,
+                appName = "aFreeRDP (Open Source)",
+                isInstalled = isAppInstalled(pm, PKG_AFREERDP),
+                isOpenSource = true
+            ),
+            InstalledClient(
+                packageName = PKG_MS_RDC_1,
+                appName = "Microsoft Remote Desktop",
+                isInstalled = isAppInstalled(pm, PKG_MS_RDC_1) || isAppInstalled(pm, PKG_MS_RDC_2) || isAppInstalled(pm, PKG_MS_RDC_BETA),
+                isOpenSource = false
+            )
         )
-        return knownClients
     }
 
-    private fun isAppInstalled(pm: PackageManager, packageName: String): Boolean {
+    fun isAppInstalled(pm: PackageManager, packageName: String): Boolean {
         return try {
             pm.getPackageInfo(packageName, 0)
             true
@@ -48,39 +61,93 @@ object RdpLauncher {
     }
 
     /**
-     * Automatic seamless connection: launches server directly in official MS Remote Desktop,
-     * aFreeRDP, or general RDP handler. If none is installed, opens Google Play.
+     * Automatic seamless connection: launches server directly.
+     * Prefers open-source aFreeRDP if installed, then MS RDC, then generic file / URI.
      */
     fun connectToServer(context: Context, server: ServerEntity) {
-        // 1. Try official Microsoft Remote Desktop
+        val pm = context.packageManager
+        val afreedpInstalled = isAppInstalled(pm, PKG_AFREERDP)
+
+        if (afreedpInstalled) {
+            if (launchFreeRdpDirect(context, server) || launchRdpFile(context, server, PKG_AFREERDP)) {
+                return
+            }
+        }
+
+        // Try MS Remote Desktop packages
         var launched = launchRdpFile(context, server, PKG_MS_RDC_1)
+        if (!launched) launched = launchRdpFile(context, server, PKG_MS_RDC_2)
+        if (!launched) launched = launchRdpFile(context, server, PKG_MS_RDC_BETA)
+
+        // Try generic RDP file
+        if (!launched) launched = launchRdpFile(context, server)
+
+        // Try FreeRDP scheme
+        if (!launched) launched = launchFreeRdpDirect(context, server)
+
+        // Try rdp:// URI scheme
+        if (!launched) launched = launchRdpUri(context, server)
+
+        // If none installed, notify and offer aFreeRDP / Play Store
         if (!launched) {
-            launched = launchRdpFile(context, server, PKG_MS_RDC_2)
-        }
-        if (!launched) {
-            launched = launchRdpFile(context, server, PKG_MS_RDC_BETA)
-        }
-        // 2. Try aFreeRDP
-        if (!launched) {
-            launched = launchRdpFile(context, server, PKG_AFREERDP)
-        }
-        // 3. Try generic .rdp file association
-        if (!launched) {
-            launched = launchRdpFile(context, server)
-        }
-        // 4. Try rdp:// URI scheme
-        if (!launched) {
-            launched = launchRdpUri(context, server)
-        }
-        // 5. If no client installed, prompt to install from Play Store
-        if (!launched) {
-            Toast.makeText(context, "Установите Microsoft Remote Desktop для прямого подключения", Toast.LENGTH_LONG).show()
-            openPlayStore(context, PKG_MS_RDC_1)
+            Toast.makeText(context, "Клиент RDP не найден. Установите aFreeRDP или MS Remote Desktop.", Toast.LENGTH_LONG).show()
+            openUrl(context, URL_AFREERDP_FDROID)
         }
     }
 
     /**
-     * Generates .rdp configuration file content according to MS RDP specifications
+     * Builds freerdp:// URI for native aFreeRDP SessionActivity
+     * Syntax: freerdp://user@ip:port/connect?p=password&sound=&clipboard=%2b
+     */
+    fun buildFreeRdpUri(server: ServerEntity): Uri {
+        val host = server.ip
+        val port = if (server.port > 0) server.port else 3389
+        val userInfo = if (server.login.isNotBlank()) {
+            if (server.domain.isNotBlank()) "${server.domain}\\${server.login}" else server.login
+        } else null
+
+        val uriBuilder = Uri.Builder()
+            .scheme("freerdp")
+            .authority(if (userInfo != null) "$userInfo@$host:$port" else "$host:$port")
+            .path("/connect")
+            .appendQueryParameter("v", if (port != 3389) "$host:$port" else host)
+            .appendQueryParameter("gdi", "sw")
+
+        if (server.password.isNotBlank()) {
+            uriBuilder.appendQueryParameter("p", server.password)
+        }
+        if (server.adminSession) {
+            uriBuilder.appendQueryParameter("admin", "")
+        }
+        if (server.soundRedirection == 0) {
+            uriBuilder.appendQueryParameter("sound", "sys:alsa")
+        }
+        uriBuilder.appendQueryParameter("clipboard", "")
+        uriBuilder.appendQueryParameter("cert", "ignore")
+
+        return uriBuilder.build()
+    }
+
+    /**
+     * Launches session directly via aFreeRDP native scheme
+     */
+    fun launchFreeRdpDirect(context: Context, server: ServerEntity): Boolean {
+        return try {
+            val uri = buildFreeRdpUri(server)
+            val intent = Intent(Intent.ACTION_VIEW, uri).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                setPackage(PKG_AFREERDP)
+            }
+            context.startActivity(intent)
+            true
+        } catch (e: Exception) {
+            // Package might not respond to scheme, fallback to .rdp file
+            false
+        }
+    }
+
+    /**
+     * Generates .rdp configuration file content according to MS RDP / FreeRDP specifications
      */
     fun generateRdpFileContent(server: ServerEntity): String {
         val sb = StringBuilder()
@@ -162,10 +229,10 @@ object RdpLauncher {
             listOf(targetPackage)
         } else {
             listOf(
+                PKG_AFREERDP,
                 PKG_MS_RDC_1,
                 PKG_MS_RDC_2,
-                PKG_MS_RDC_BETA,
-                PKG_AFREERDP
+                PKG_MS_RDC_BETA
             )
         }
 
@@ -217,7 +284,7 @@ object RdpLauncher {
     }
 
     /**
-     * Opens Google Play Store to install Microsoft Remote Desktop or aFreeRDP
+     * Opens Google Play Store
      */
     fun openPlayStore(context: Context, packageName: String) {
         try {
@@ -226,10 +293,21 @@ object RdpLauncher {
             }
             context.startActivity(intent)
         } catch (e: Exception) {
-            val webIntent = Intent(Intent.ACTION_VIEW, Uri.parse("https://play.google.com/store/apps/details?id=$packageName")).apply {
+            openUrl(context, "https://play.google.com/store/apps/details?id=$packageName")
+        }
+    }
+
+    /**
+     * Opens browser URL safely
+     */
+    fun openUrl(context: Context, url: String) {
+        try {
+            val intent = Intent(Intent.ACTION_VIEW, Uri.parse(url)).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
-            context.startActivity(webIntent)
+            context.startActivity(intent)
+        } catch (e: Exception) {
+            Toast.makeText(context, "Не удалось открыть ссылку", Toast.LENGTH_SHORT).show()
         }
     }
 

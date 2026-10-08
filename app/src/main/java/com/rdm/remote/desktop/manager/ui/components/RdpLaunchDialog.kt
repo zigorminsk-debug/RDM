@@ -10,6 +10,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.*
 import androidx.compose.material.icons.outlined.ContentCopy
+import androidx.compose.material.icons.outlined.OpenInBrowser
 import androidx.compose.material.icons.outlined.OpenInNew
 import androidx.compose.material3.*
 import androidx.compose.runtime.*
@@ -33,7 +34,8 @@ fun RdpLaunchDialog(
 ) {
     val context = LocalContext.current
     val installedClients = remember { RdpLauncher.checkInstalledClients(context) }
-    val isAnyClientInstalled = installedClients.any { it.isInstalled }
+    val isAfreeRdpInstalled = installedClients.firstOrNull { it.packageName == RdpLauncher.PKG_AFREERDP }?.isInstalled == true
+    val isMsInstalled = installedClients.firstOrNull { it.packageName == RdpLauncher.PKG_MS_RDC_1 }?.isInstalled == true
     val scrollState = rememberScrollState()
 
     AlertDialog(
@@ -131,50 +133,87 @@ fun RdpLaunchDialog(
                     color = MaterialTheme.colorScheme.primary
                 )
 
-                // 1. Launch MS Remote Desktop (Official client)
+                // 1. Open Source FreeRDP (aFreeRDP)
                 LaunchOptionCard(
-                    title = "Microsoft Remote Desktop",
-                    subtitle = "Прямой запуск реального сервера в официальном клиенте Microsoft",
-                    icon = Icons.Default.Launch,
-                    color = Color(0xFF0078D7),
+                    title = "aFreeRDP (Open Source)",
+                    subtitle = if (isAfreeRdpInstalled) "Запустить сеанс через открытый клиент FreeRDP" else "Открытый RDP-клиент не установлен (нажмите для скачивания с F-Droid)",
+                    icon = Icons.Default.Terminal,
+                    color = Color(0xFF107C41),
                     isFeatured = true,
-                    badgeText = "Рекомендуется",
+                    badgeText = if (isAfreeRdpInstalled) "Open Source" else "Скачать F-Droid",
                     onClick = {
-                        val launched = RdpLauncher.launchRdpFile(context, server, RdpLauncher.PKG_MS_RDC_1)
-                        if (!launched) {
-                            val uriLaunched = RdpLauncher.launchRdpUri(context, server)
-                            if (!uriLaunched) {
-                                RdpLauncher.launchRdpFile(context, server)
+                        if (isAfreeRdpInstalled) {
+                            if (!RdpLauncher.launchFreeRdpDirect(context, server)) {
+                                RdpLauncher.launchRdpFile(context, server, RdpLauncher.PKG_AFREERDP)
                             }
+                        } else {
+                            RdpLauncher.openUrl(context, RdpLauncher.URL_AFREERDP_FDROID)
                         }
                         onDismiss()
                     }
                 )
 
-                // 2. Launch via generic .RDP file (aFreeRDP / Any installed client)
+                // 2. Microsoft Remote Desktop (Official client)
                 LaunchOptionCard(
-                    title = "aFreeRDP / Любой RDP клиент",
-                    subtitle = "Открыть сессию через файл конфигурации .rdp",
+                    title = "Microsoft Remote Desktop",
+                    subtitle = if (isMsInstalled) "Запустить сеанс в клиенте Microsoft" else "Клиент Microsoft не установлен (нажмите для перехода в Google Play)",
+                    icon = Icons.Default.Launch,
+                    color = Color(0xFF0078D7),
+                    badgeText = if (isMsInstalled) "Установлен" else "Google Play",
+                    onClick = {
+                        if (isMsInstalled) {
+                            var launched = RdpLauncher.launchRdpFile(context, server, RdpLauncher.PKG_MS_RDC_1)
+                            if (!launched) launched = RdpLauncher.launchRdpFile(context, server, RdpLauncher.PKG_MS_RDC_2)
+                            if (!launched) launched = RdpLauncher.launchRdpFile(context, server, RdpLauncher.PKG_MS_RDC_BETA)
+                            if (!launched) RdpLauncher.launchRdpUri(context, server)
+                        } else {
+                            RdpLauncher.openPlayStore(context, RdpLauncher.PKG_MS_RDC_1)
+                        }
+                        onDismiss()
+                    }
+                )
+
+                // 3. Launch via generic .RDP file (Any other installed client)
+                LaunchOptionCard(
+                    title = "Любой системный RDP клиент",
+                    subtitle = "Открыть сессию через файл конфигурации .rdp с выбором приложения",
                     icon = Icons.Outlined.OpenInNew,
-                    color = Color(0xFF107C41),
+                    color = MaterialTheme.colorScheme.secondary,
                     onClick = {
                         RdpLauncher.launchRdpFile(context, server)
                         onDismiss()
                     }
                 )
 
-                // 3. If no client is installed, offer Play Store install option
-                if (!isAnyClientInstalled) {
-                    LaunchOptionCard(
-                        title = "Установить MS Remote Desktop",
-                        subtitle = "Скачать официальное приложение Microsoft из Google Play",
-                        icon = Icons.Default.Download,
-                        color = MaterialTheme.colorScheme.tertiary,
-                        onClick = {
-                            RdpLauncher.openPlayStore(context, RdpLauncher.PKG_MS_RDC_1)
-                            onDismiss()
+                // 4. Source code link to FreeRDP
+                Surface(
+                    shape = RoundedCornerShape(10.dp),
+                    color = MaterialTheme.colorScheme.surfaceVariant.copy(alpha = 0.35f),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .clickable {
+                            RdpLauncher.openUrl(context, RdpLauncher.URL_AFREERDP_GITHUB)
                         }
-                    )
+                ) {
+                    Row(
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .padding(horizontal = 12.dp, vertical = 8.dp),
+                        verticalAlignment = Alignment.CenterVertically
+                    ) {
+                        Icon(
+                            imageVector = Icons.Outlined.OpenInBrowser,
+                            contentDescription = null,
+                            modifier = Modifier.size(18.dp),
+                            tint = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                        Spacer(modifier = Modifier.width(8.dp))
+                        Text(
+                            text = "GitHub исходный код FreeRDP / aFreeRDP",
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
+                    }
                 }
             }
         },
