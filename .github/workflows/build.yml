@@ -98,29 +98,40 @@ jobs:
           TAG="v${{ env.VERSION_NAME }}"
           TITLE="RDM Release v${{ env.VERSION_NAME }} (Build ${{ env.VERSION_CODE }})"
           
+          APK_FILE="release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
+          if [ ! -f "$APK_FILE" ]; then
+            for f in release-output/*.apk; do
+              if [ -f "$f" ]; then
+                APK_FILE="$f"
+                break
+              fi
+            done
+          fi
+
+          echo "Found APK: $APK_FILE"
+          ls -lh release-output/
+
+          gh release delete "$TAG" --yes 2>/dev/null || true
           git config user.name "github-actions[bot]"
           git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag -f "$TAG" "${{ github.sha }}" || true
-          git push -f origin "$TAG" || true
-
-          APK_FILE="release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
+          git push origin ":refs/tags/$TAG" 2>/dev/null || true
 
           gh release create "$TAG" "$APK_FILE" \
+            --target "${{ github.sha }}" \
             --title "$TITLE" \
-            --clobber \
             --notes "### 🚀 Remote Desktop Manager (RDM) Android v${{ env.VERSION_NAME }}
           
-          **Номер сборки**: \`${{ env.VERSION_CODE }}\`
+**Номер сборки**: \`${{ env.VERSION_CODE }}\`
           
-          #### 📦 Что включено:
-          - ⚡ **Прямой запуск реального RDP**: запуск сеанса в официальном клиенте Microsoft Remote Desktop или aFreeRDP с автогенерацией .rdp файла.
-          - 🔄 **Автообновление из GitHub**: кнопка «Проверить обновления» в заголовке и в «Настройках», автоматическая проверка при запуске, скачивание APK и установка поверх.
-          - 🔑 **Постоянный ключ подписи (Release Keystore)**: бесшовное обновление поверх без удаления приложения.
-          - 🏢 **Иерархия клиентов и серверов**: список клиентов -> карточки серверов при клике.
-          - ✏️ **Редактирование серверов**: долгое нажатие открывает модальное окно со всеми полями.
-          - 💾 **Экспорт и импорт**: полное резервное копирование в JSON.
-          - 🌐 **Проверка доступности**: встроенный TCP Ping.
+#### 📦 Что включено:
+- 🐧 **Интеграция с открытым FreeRDP (aFreeRDP)**:
+  - Прямой запуск сессии через \`freerdp://\` и \`SessionActivity\`.
+  - Генерация \`.rdp\` файла с поддержкой NLA, аудио и буфера обмена.
+  - Определение статуса установки и скачивание с F-Droid в 1 клик.
+- 🔄 **Автообновление из GitHub**: проверка обновлений при старте и по кнопке, прямое скачивание APK и бесшовная установка поверх.
+- 🔑 **Постоянный ключ подписи (Release Keystore)**: обновление поверх без удаления приложения и потери данных.
+- 🏢 **Иерархия клиентов и серверов**: группировка, поиск и пинг портов (TCP Ping).
           
-          #### 📥 Скачать APK:
-          - Скачайте \`RDM-v${{ env.VERSION_NAME }}-signed.apk\` ниже." || \
-          gh release upload "$TAG" "$APK_FILE" --clobber || true
+#### 📥 Скачать APK:
+- Скачайте файл \`RDM-v${{ env.VERSION_NAME }}-signed.apk\` ниже." || \
+          gh release upload "$TAG" "$APK_FILE" --clobber
