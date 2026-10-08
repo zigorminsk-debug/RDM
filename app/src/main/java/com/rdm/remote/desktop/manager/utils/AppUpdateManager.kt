@@ -191,6 +191,23 @@ object AppUpdateManager {
      */
     fun installApk(context: Context, apkFile: File) {
         try {
+            if (!apkFile.exists() || apkFile.length() == 0L) {
+                _updateStatus.value = UpdateStatus.Error("Файл обновления поврежден или не найден.")
+                return
+            }
+
+            // On Android 8.0+ (Oreo to Android 14/15), verify permission to install unknown apps
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                if (!context.packageManager.canRequestPackageInstalls()) {
+                    val settingsIntent = Intent(android.provider.Settings.ACTION_MANAGE_UNKNOWN_APP_SOURCES).apply {
+                        data = Uri.parse("package:${context.packageName}")
+                        flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                    }
+                    context.startActivity(settingsIntent)
+                    return
+                }
+            }
+
             val apkUri = FileProvider.getUriForFile(
                 context,
                 "${context.packageName}.fileprovider",
@@ -199,7 +216,10 @@ object AppUpdateManager {
 
             val intent = Intent(Intent.ACTION_VIEW).apply {
                 setDataAndType(apkUri, "application/vnd.android.package-archive")
-                flags = Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_ACTIVITY_NEW_TASK
+                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                addFlags(Intent.FLAG_ACTIVITY_CLEAR_TOP)
+                putExtra(Intent.EXTRA_NOT_UNKNOWN_SOURCE, true)
             }
 
             context.startActivity(intent)
