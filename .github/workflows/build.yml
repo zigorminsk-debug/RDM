@@ -97,7 +97,8 @@ jobs:
         run: |
           TAG="v${{ env.VERSION_NAME }}"
           TITLE="RDM Release v${{ env.VERSION_NAME }} (Build ${{ env.VERSION_CODE }})"
-          
+
+          # Locate generated APK
           APK_FILE="release-output/RDM-v${{ env.VERSION_NAME }}-signed.apk"
           if [ ! -f "$APK_FILE" ]; then
             for f in release-output/*.apk; do
@@ -108,30 +109,33 @@ jobs:
             done
           fi
 
-          echo "Found APK: $APK_FILE"
+          echo "Target APK file: $APK_FILE"
           ls -lh release-output/
 
+          # Clean up any existing draft/tag collision
           gh release delete "$TAG" --yes 2>/dev/null || true
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
           git push origin ":refs/tags/$TAG" 2>/dev/null || true
 
+          # Create release and upload the signed APK
           gh release create "$TAG" "$APK_FILE" \
             --target "${{ github.sha }}" \
             --title "$TITLE" \
             --notes "### 🚀 Remote Desktop Manager (RDM) Android v${{ env.VERSION_NAME }}
-          
+
 **Номер сборки**: \`${{ env.VERSION_CODE }}\`
-          
-#### 📦 Что включено:
+
+#### 📦 Что нового в этом выпуске:
 - 🐧 **Интеграция с открытым FreeRDP (aFreeRDP)**:
-  - Прямой запуск сессии через \`freerdp://\` и \`SessionActivity\`.
-  - Генерация \`.rdp\` файла с поддержкой NLA, аудио и буфера обмена.
-  - Определение статуса установки и скачивание с F-Droid в 1 клик.
+  - Прямой запуск сессии через схему \`freerdp://\` и \`SessionActivity\`.
+  - Генерация конфигурационного файла \`.rdp\` с поддержкой NLA, буфера обмена и звука.
+  - Определение статуса установки aFreeRDP и ссылка на быструю установку с F-Droid.
 - 🔄 **Автообновление из GitHub**: проверка обновлений при старте и по кнопке, прямое скачивание APK и бесшовная установка поверх.
 - 🔑 **Постоянный ключ подписи (Release Keystore)**: обновление поверх без удаления приложения и потери данных.
 - 🏢 **Иерархия клиентов и серверов**: группировка, поиск и пинг портов (TCP Ping).
-          
+
 #### 📥 Скачать APK:
-- Скачайте файл \`RDM-v${{ env.VERSION_NAME }}-signed.apk\` ниже." || \
-          gh release upload "$TAG" "$APK_FILE" --clobber
+- Скачайте файл \`RDM-v${{ env.VERSION_NAME }}-signed.apk\` ниже." || {
+            echo "Direct release create failed, attempting fallback release + upload..."
+            gh release create "$TAG" --target "${{ github.sha }}" --title "$TITLE" --notes "Release v${{ env.VERSION_NAME }}" || true
+            gh release upload "$TAG" "$APK_FILE" --clobber
+          }
