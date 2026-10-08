@@ -97,14 +97,21 @@ object RdpLauncher {
 
     /**
      * Builds freerdp:// URI for native aFreeRDP SessionActivity
-     * Syntax: freerdp://user@ip:port/connect?p=password&sound=&clipboard=%2b
+     * Syntax: freerdp://[user@]ip:port/connect?u=user&d=domain&p=password&sound=&clipboard=
      */
     fun buildFreeRdpUri(server: ServerEntity): Uri {
         val host = server.ip
         val port = if (server.port > 0) server.port else 3389
-        val userInfo = if (server.login.isNotBlank()) {
-            if (server.domain.isNotBlank()) "${server.domain}\\${server.login}" else server.login
-        } else null
+        val effectiveLogin = server.login.trim()
+        val effectiveDomain = server.domain.trim()
+
+        val userInfo = when {
+            effectiveDomain.isNotBlank() && effectiveLogin.isNotBlank() -> {
+                if (effectiveLogin.contains("\\")) effectiveLogin else "$effectiveDomain\\$effectiveLogin"
+            }
+            effectiveLogin.isNotBlank() -> effectiveLogin
+            else -> null
+        }
 
         val uriBuilder = Uri.Builder()
             .scheme("freerdp")
@@ -113,9 +120,26 @@ object RdpLauncher {
             .appendQueryParameter("v", if (port != 3389) "$host:$port" else host)
             .appendQueryParameter("gdi", "sw")
 
+        // Pass user explicitly as query param for robust aFreeRDP argument parsing (/u:)
+        if (effectiveLogin.isNotBlank()) {
+            val userParam = if (effectiveDomain.isNotBlank() && !effectiveLogin.contains("\\")) {
+                "$effectiveDomain\\$effectiveLogin"
+            } else {
+                effectiveLogin
+            }
+            uriBuilder.appendQueryParameter("u", userParam)
+        }
+
+        // Pass domain explicitly (/d:)
+        if (effectiveDomain.isNotBlank()) {
+            uriBuilder.appendQueryParameter("d", effectiveDomain)
+        }
+
+        // Pass password explicitly (/p:)
         if (server.password.isNotBlank()) {
             uriBuilder.appendQueryParameter("p", server.password)
         }
+
         if (server.adminSession) {
             uriBuilder.appendQueryParameter("admin", "")
         }
