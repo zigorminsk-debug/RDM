@@ -73,17 +73,33 @@ object RdpLauncher {
         }
         // 5. If no client installed, prompt to install from Play Store
         if (!launched) {
-            Toast.makeText(context, "Установите MS Remote Desktop для прямого подключения", Toast.LENGTH_LONG).show()
+            Toast.makeText(context, "Установите MS Remote Desktop для внешнего подключения", Toast.LENGTH_LONG).show()
             openPlayStore(context, PKG_MS_RDC_1)
         }
     }
 
     /**
-     * Generates .rdp configuration file content according to MS RDP specifications
+     * Generates .rdp configuration file content according to MS RDP and FreeRDP specifications
      */
     fun generateRdpFileContent(server: ServerEntity): String {
         val sb = StringBuilder()
-        val address = if (server.port > 0 && server.port != 3389) "${server.ip}:${server.port}" else server.ip
+        val port = if (server.port > 0) server.port else 3389
+        val hostOnly = server.ip.trim().split(":")[0]
+        val address = if (port != 3389) "$hostOnly:$port" else hostOnly
+
+        var rawUser = server.login.trim()
+        var domain = server.domain.trim()
+
+        // Handle domain\user or user@domain formats
+        if (rawUser.contains("\\")) {
+            val parts = rawUser.split("\\", limit = 2)
+            if (domain.isBlank()) domain = parts[0].trim()
+            rawUser = parts[1].trim()
+        } else if (rawUser.contains("@")) {
+            val parts = rawUser.split("@", limit = 2)
+            rawUser = parts[0].trim()
+            if (domain.isBlank()) domain = parts[1].trim()
+        }
 
         sb.appendLine("screen mode id:i:2")
         sb.appendLine("use multimon:i:0")
@@ -100,6 +116,7 @@ object RdpLauncher {
         sb.appendLine("session bpp:i:32")
         sb.appendLine("winposstr:s:0,1,0,0,800,600")
         sb.appendLine("full address:s:$address")
+        sb.appendLine("server port:i:$port")
         sb.appendLine("compression:i:1")
         sb.appendLine("keyboardhook:i:2")
         sb.appendLine("audiomode:i:${server.soundRedirection}")
@@ -112,14 +129,15 @@ object RdpLauncher {
         sb.appendLine("authentication level:i:2")
         sb.appendLine("prompt for credentials:i:0")
         sb.appendLine("negotiate security layer:i:1")
+        sb.appendLine("enablecredsspsupport:i:1")
         sb.appendLine("remoteapplicationmode:i:0")
         sb.appendLine("administrative session:i:${if (server.adminSession) 1 else 0}")
 
-        if (server.login.isNotBlank()) {
-            sb.appendLine("username:s:${server.login}")
+        if (rawUser.isNotBlank()) {
+            sb.appendLine("username:s:$rawUser")
         }
-        if (server.domain.isNotBlank()) {
-            sb.appendLine("domain:s:${server.domain}")
+        if (domain.isNotBlank()) {
+            sb.appendLine("domain:s:$domain")
         }
 
         return sb.toString()
@@ -189,12 +207,31 @@ object RdpLauncher {
      */
     fun launchRdpUri(context: Context, server: ServerEntity): Boolean {
         return try {
-            val address = server.formattedAddress()
-            val encodedAddress = URLEncoder.encode(address, "UTF-8")
-            val encodedUser = URLEncoder.encode(server.login, "UTF-8")
-            val uriString = "rdp://full%20address=s:$encodedAddress&username=s:$encodedUser"
-            val uri = Uri.parse(uriString)
+            val port = if (server.port > 0) server.port else 3389
+            val hostOnly = server.ip.trim().split(":")[0]
+            val address = if (port != 3389) "$hostOnly:$port" else hostOnly
 
+            var rawUser = server.login.trim()
+            var domain = server.domain.trim()
+            if (rawUser.contains("\\")) {
+                val parts = rawUser.split("\\", limit = 2)
+                if (domain.isBlank()) domain = parts[0].trim()
+                rawUser = parts[1].trim()
+            }
+
+            val encodedAddress = URLEncoder.encode(address, "UTF-8")
+            val encodedUser = URLEncoder.encode(rawUser, "UTF-8")
+            val encodedDomain = URLEncoder.encode(domain, "UTF-8")
+
+            var uriString = "rdp://full%20address=s:$encodedAddress&username=s:$encodedUser"
+            if (domain.isNotBlank()) {
+                uriString += "&domain=s:$encodedDomain"
+            }
+            if (port != 3389) {
+                uriString += "&server%20port=i:$port"
+            }
+
+            val uri = Uri.parse(uriString)
             val intent = Intent(Intent.ACTION_VIEW, uri).apply {
                 flags = Intent.FLAG_ACTIVITY_NEW_TASK
             }
