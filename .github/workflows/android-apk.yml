@@ -67,7 +67,7 @@ jobs:
               tail -n 4 "${log_file}"
             else
               cat "${log_file}"
-              detail="$(tail -n 5 "${log_file}" | tr '\r\n' ' ' | cut -c1-500)"
+              detail="$(tail -c 1500 "${log_file}" | tr '\r\n' ' ' | tr -s ' ' | tail -c 500)"
               echo "::error title=Android SDK package install failed::${package} — ${detail}"
               exit 1
             fi
