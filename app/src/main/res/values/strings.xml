@@ -1,0 +1,15 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">RDM</string>
+    <string name="main_title">Your desktops.\nOne tap away.</string>
+    <string name="main_subtitle">A calmer way to manage your remote PCs and servers.</string>
+    <string name="quick_connect_title">Quick connect</string>
+    <string name="quick_connect_subtitle">Connect once without saving a profile.</string>
+    <string name="quick_host_hint">PC name, IP, or host:port</string>
+    <string name="saved_connections">Saved desktops</string>
+    <string name="search_hint">Search name, host, or username</string>
+    <string name="empty_title">Your workspace is ready</string>
+    <string name="empty_message">Add your first desktop to keep all your RDP connections in one place.</string>
+    <string name="password_security_note">Saved passwords are encrypted with Android Keystore and stay on this device.</string>
+    <string name="free_rdp_credit">Remote sessions powered by FreeRDP for Android</string>
+</resources>

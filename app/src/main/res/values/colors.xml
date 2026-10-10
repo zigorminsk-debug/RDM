@@ -1,0 +1,16 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <color name="canvas">#F4F7FB</color>
+    <color name="surface">#FFFFFF</color>
+    <color name="ink">#13223A</color>
+    <color name="muted">#71809A</color>
+    <color name="line">#E1E8F1</color>
+    <color name="primary">#3269F5</color>
+    <color name="primary_dark">#2454D2</color>
+    <color name="primary_soft">#EAF0FF</color>
+    <color name="teal">#18A999</color>
+    <color name="teal_soft">#E7F7F3</color>
+    <color name="danger">#C84B5B</color>
+    <color name="lavender">#F0EDFF</color>
+    <color name="lavender_ink">#6C58CB</color>
+</resources>

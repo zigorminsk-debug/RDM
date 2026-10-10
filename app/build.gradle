@@ -1,0 +1,48 @@
+apply plugin: 'com.android.application'
+
+// CI assigns one monotonically increasing build number per workflow execution.
+// The attempt suffix also makes manual GitHub reruns produce a distinct APK.
+def buildRunNumber = System.getenv('GITHUB_RUN_NUMBER')
+def buildRunAttempt = System.getenv('GITHUB_RUN_ATTEMPT') ?: '1'
+def appVersionCode = 1
+def appVersionName = '1.0.0'
+if (buildRunNumber != null) {
+    long runNumber = buildRunNumber.toLong()
+    long runAttempt = buildRunAttempt.toLong()
+    if (runNumber < 1 || runAttempt < 1 || runAttempt > 999) {
+        throw new GradleException('Invalid GitHub Actions run number or attempt.')
+    }
+    long numberedCode = runNumber * 1000L + runAttempt
+    if (numberedCode > 2100000000L) {
+        throw new GradleException('Android versionCode limit reached for the current build number.')
+    }
+    appVersionCode = (int) numberedCode
+    appVersionName = "1.0.0+${runNumber}.${runAttempt}"
+}
+
+android {
+    namespace 'com.rdm.android'
+    compileSdk rootProject.ext.compileApi
+
+    defaultConfig {
+        applicationId 'com.rdm.android'
+        minSdk rootProject.ext.minApi
+        targetSdk rootProject.ext.targetApi
+        versionCode appVersionCode
+        versionName appVersionName
+
+        ndk {
+            abiFilters(*rootProject.ext.abiFilters)
+        }
+    }
+
+    compileOptions {
+        sourceCompatibility JavaVersion.VERSION_11
+        targetCompatibility JavaVersion.VERSION_11
+    }
+}
+
+dependencies {
+    implementation project(':freerdpcore')
+    implementation 'androidx.appcompat:appcompat:1.7.1'
+}

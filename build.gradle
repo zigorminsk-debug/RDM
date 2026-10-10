@@ -1,0 +1,49 @@
+buildscript {
+    repositories {
+        google()
+        mavenCentral()
+    }
+    dependencies {
+        classpath 'com.android.tools.build:gradle:9.2.1'
+    }
+}
+
+ext {
+    // Keep these values aligned with the FreeRDP Android Studio build configuration.
+    compileApi = 37
+    targetApi = 37
+    minApi = 29
+    toolsVersion = '37.0.0'
+    ndkVersion = '29.0.13113456'
+    cmakeVersion = '4.1.2'
+    universal = false
+    splitEnabled = false
+    splitArchs = ['arm64-v8a', 'armeabi-v7a', 'x86_64']
+    abiFilters = ['arm64-v8a', 'armeabi-v7a', 'x86_64']
+    cmakeArguments = [
+        '-DWITH_FFMPEG=ON',
+        '-DWITH_OPENH264=ON',
+        '-DWITH_OPUS=ON',
+        '-DWITH_WEBP=ON',
+        '-DWITH_JPEG=ON',
+        '-DWITH_PNG=ON',
+        '-DWITH_CJSON=ON',
+        '-DWITH_OPENSSL=ON'
+    ]
+}
+
+subprojects {
+    afterEvaluate { project ->
+        if (project.hasProperty('android')) {
+            project.android {
+                if (namespace == null) {
+                    namespace 'com.freerdp.' + project.name.toLowerCase(Locale.ROOT)
+                }
+            }
+        }
+    }
+}
+
+tasks.register('clean', Delete) {
+    delete rootProject.buildDir
+}
