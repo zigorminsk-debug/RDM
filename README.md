@@ -20,10 +20,11 @@ The upstream FreeRDP repository is pinned as a Git submodule. After cloning this
 
 ```sh
 git submodule update --init --recursive
+./scripts/prepare-freerdp-android.sh
 ./gradlew assembleDebug
 ```
 
-The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. Android Studio can open this repository directly after the submodule has been initialized.
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. Android Studio can open this repository directly after the submodule has been initialized and the compatibility script has run.
 
 ## GitHub Actions builds
 

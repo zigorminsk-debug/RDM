@@ -28,6 +28,9 @@ jobs:
         with:
           submodules: recursive
 
+      - name: Prepare FreeRDP Android Gradle configuration
+        run: ./scripts/prepare-freerdp-android.sh
+
       - name: Set up JDK 17
         uses: actions/setup-java@v6
         with:
