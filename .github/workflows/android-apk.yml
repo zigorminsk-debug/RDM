@@ -43,10 +43,7 @@ jobs:
       - name: Install Android build components
         shell: bash
         run: |
-          set +o pipefail
-          yes | sdkmanager --licenses
-          set -o pipefail
-          sdkmanager --install \
+          sdkmanager \
             "platform-tools" \
             "platforms;android-37" \
             "build-tools;37.0.0" \
