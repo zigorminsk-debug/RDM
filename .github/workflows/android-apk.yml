@@ -77,16 +77,21 @@ jobs:
           done
 
       - name: Build numbered debug APK
+        id: gradle_build
         shell: bash
         run: |
           set -euo pipefail
           log_file="$RUNNER_TEMP/gradle-build.log"
-          build_status=0
-          ./gradlew --no-daemon --stacktrace --console=plain assembleDebug >"${log_file}" 2>&1 || build_status=$?
-          if [[ "${build_status}" -eq 0 ]]; then
-            tail -n 80 "${log_file}"
-          else
-            # Keep the Actions log bounded: native builds can emit tens of thousands of lines.
+          ./gradlew --no-daemon --stacktrace --console=plain --no-parallel --max-workers=1 assembleDebug >"${log_file}" 2>&1
+          tail -n 80 "${log_file}"
+
+      - name: Report Gradle APK build failure
+        if: failure() && steps.gradle_build.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          log_file="$RUNNER_TEMP/gradle-build.log"
+          if [[ -f "${log_file}" ]]; then
             tail -n 120 "${log_file}"
             detail="$(sed -n '/^\* What went wrong:/,/^\* Try:/p' "${log_file}" | head -c 2400)"
             if [[ -z "${detail}" ]]; then
@@ -95,17 +100,18 @@ jobs:
             if [[ -z "${detail}" ]]; then
               detail="$(tail -c 2400 "${log_file}")"
             fi
-            detail="$(printf '%s' "${detail}" | tr '\r\n' ' ' | tr -s ' ')"
-            {
-              echo "## Gradle APK build failed (exit code ${build_status})"
-              echo
-              echo '```text'
-              printf '%s\n' "${detail}"
-              echo '```'
-            } >> "$GITHUB_STEP_SUMMARY"
-            echo "::error title=Gradle APK build failed::${detail}"
-            exit "${build_status}"
+          else
+            detail="Gradle build failed without producing a log file."
           fi
+          detail="$(printf '%s' "${detail}" | tr '\r\n' ' ' | tr -s ' ')"
+          {
+            echo '## Gradle APK build failed'
+            echo
+            echo '```text'
+            printf '%s\n' "${detail}"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=Gradle APK build failed::${detail}"
 
       - name: Prepare numbered artifact
         shell: bash
