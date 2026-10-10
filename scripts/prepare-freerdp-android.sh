@@ -19,6 +19,7 @@ patches = (
     ("abiFilters rootProject.ext.abiFilters", "abiFilters(*rootProject.ext.abiFilters)"),
     ("include rootProject.ext.splitArchs", "include(*rootProject.ext.splitArchs)"),
     ("arguments rootProject.ext.cmakeArguments", "arguments(*rootProject.ext.cmakeArguments)"),
+    ("androidx.core:core:1.19.0", "androidx.core:core:1.17.0"),
 )
 changed = []
 
