@@ -10,10 +10,10 @@ buildscript {
 
 ext {
     // Keep these values aligned with the FreeRDP Android Studio build configuration.
-    compileApi = 37
-    targetApi = 37
+    compileApi = 36
+    targetApi = 36
     minApi = 29
-    toolsVersion = '37.0.0'
+    toolsVersion = '36.0.0'
     ndkVersion = '29.0.13113456'
     cmakeVersion = '4.1.2'
     universal = false

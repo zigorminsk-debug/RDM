@@ -14,7 +14,7 @@ This initial version targets direct RDP hosts. RD Gateway profiles, `.rdp` impor
 
 ## Build
 
-Requirements: Android Studio with Android SDK 37, JDK 17 or newer, Android NDK `29.0.13113456`, and CMake `4.1.2`.
+Requirements: Android Studio with Android SDK 36 and Build Tools `36.0.0`, JDK 17 or newer, Android NDK `29.0.13113456`, and CMake `4.1.2`.
 
 The upstream FreeRDP repository is pinned as a Git submodule. After cloning this repository, initialize it once:
 

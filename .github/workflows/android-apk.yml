@@ -55,15 +55,15 @@ jobs:
           sdkmanager --version
           packages=(
             "platform-tools"
-            "platforms;android-37"
-            "build-tools;37.0.0"
+            "platforms;android-36"
+            "build-tools;36.0.0"
             "ndk;29.0.13113456"
             "cmake;4.1.2"
           )
           for package in "${packages[@]}"; do
             echo "Installing Android SDK package: ${package}"
             log_file="$RUNNER_TEMP/sdkmanager-install.log"
-            if sdkmanager --channel=3 "${package}" >"${log_file}" 2>&1; then
+            if sdkmanager "${package}" >"${log_file}" 2>&1; then
               tail -n 4 "${log_file}"
             else
               cat "${log_file}"
