@@ -63,7 +63,7 @@ jobs:
           for package in "${packages[@]}"; do
             echo "Installing Android SDK package: ${package}"
             log_file="$RUNNER_TEMP/sdkmanager-install.log"
-            if sdkmanager "${package}" >"${log_file}" 2>&1; then
+            if sdkmanager --channel=3 "${package}" >"${log_file}" 2>&1; then
               tail -n 4 "${log_file}"
             else
               cat "${log_file}"
