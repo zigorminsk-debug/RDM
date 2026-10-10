@@ -43,12 +43,35 @@ jobs:
       - name: Install Android build components
         shell: bash
         run: |
-          sdkmanager \
-            "platform-tools" \
-            "platforms;android-37" \
-            "build-tools;37.0.0" \
-            "ndk;29.0.13113456" \
+          set -euo pipefail
+          echo "Android SDK root: ${ANDROID_SDK_ROOT:-${ANDROID_HOME:-unset}}"
+          if ! command -v sdkmanager >/dev/null 2>&1; then
+            echo "::error title=Android SDK setup::sdkmanager was not added to PATH"
+            printf 'cmdline-tools files:\n'
+            find "${ANDROID_SDK_ROOT:-${ANDROID_HOME:-$HOME/.android/sdk}}/cmdline-tools" -maxdepth 3 -type f -name sdkmanager -print 2>/dev/null || true
+            exit 1
+          fi
+          echo "sdkmanager: $(command -v sdkmanager)"
+          sdkmanager --version
+          packages=(
+            "platform-tools"
+            "platforms;android-37"
+            "build-tools;37.0.0"
+            "ndk;29.0.13113456"
             "cmake;4.1.2"
+          )
+          for package in "${packages[@]}"; do
+            echo "Installing Android SDK package: ${package}"
+            log_file="$RUNNER_TEMP/sdkmanager-install.log"
+            if sdkmanager "${package}" >"${log_file}" 2>&1; then
+              tail -n 4 "${log_file}"
+            else
+              cat "${log_file}"
+              detail="$(tail -n 5 "${log_file}" | tr '\r\n' ' ' | cut -c1-500)"
+              echo "::error title=Android SDK package install failed::${package} — ${detail}"
+              exit 1
+            fi
+          done
 
       - name: Build numbered debug APK
         run: ./gradlew --no-daemon --stacktrace assembleDebug
