@@ -15,16 +15,25 @@ import sys
 
 path = Path(sys.argv[1])
 source = path.read_text()
-old = "abiFilters rootProject.ext.abiFilters"
-new = "abiFilters(*rootProject.ext.abiFilters)"
+patches = (
+    ("abiFilters rootProject.ext.abiFilters", "abiFilters(*rootProject.ext.abiFilters)"),
+    ("include rootProject.ext.splitArchs", "include(*rootProject.ext.splitArchs)"),
+    ("arguments rootProject.ext.cmakeArguments", "arguments(*rootProject.ext.cmakeArguments)"),
+)
+changed = []
 
-if old in source:
-    if source.count(old) != 1:
-        raise SystemExit(f"Expected one FreeRDP abiFilters declaration in {path}")
-    path.write_text(source.replace(old, new, 1))
-    print("Applied Android Gradle compatibility fix to FreeRDP's ABI filters.")
-elif new in source:
-    print("FreeRDP Android Gradle ABI filters are already compatible.")
+for old, new in patches:
+    if old in source:
+        if source.count(old) != 1:
+            raise SystemExit(f"Expected one '{old}' declaration in {path}")
+        source = source.replace(old, new, 1)
+        changed.append(old.split()[0])
+    elif new not in source:
+        raise SystemExit(f"Unrecognized FreeRDP Gradle configuration: '{old}' in {path}")
+
+if changed:
+    path.write_text(source)
+    print("Applied FreeRDP Android Gradle compatibility fixes: " + ", ".join(changed))
 else:
-    raise SystemExit(f"Unrecognized FreeRDP ABI-filter configuration in {path}")
+    print("FreeRDP Android Gradle configuration is already compatible.")
 PY
