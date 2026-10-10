@@ -82,7 +82,11 @@ jobs:
             tail -n 80 "${log_file}"
           else
             cat "${log_file}"
-            detail="$(tail -c 4000 "${log_file}" | tr '\r\n' ' ' | tr -s ' ' | tail -c 900)"
+            detail="$(sed -n '/^\* What went wrong:/,/^\* Try:/p' "${log_file}" | head -c 1800)"
+            if [[ -z "${detail}" ]]; then
+              detail="$(tail -c 1800 "${log_file}")"
+            fi
+            detail="$(printf '%s' "${detail}" | tr '\r\n' ' ' | tr -s ' ')"
             echo "::error title=Gradle APK build failed::${detail}"
             exit 1
           fi
