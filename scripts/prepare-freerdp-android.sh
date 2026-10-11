@@ -29,6 +29,11 @@ patches_by_file = {
         ("make -j\n", "make -j2\n"),
         ("make -j install", "make -j2 install"),
     ),
+    "client/Android/cmake/ExternalOpenH264.cmake": (
+        ("ARCH=${H264_ARCH} -j libraries", "ARCH=${H264_ARCH} -j2 libraries"),
+        ("SHAREDLIB_DIR=${DEPS_INSTALL_DIR}/${CMAKE_INSTALL_LIBDIR} -j install",
+         "SHAREDLIB_DIR=${DEPS_INSTALL_DIR}/${CMAKE_INSTALL_LIBDIR} -j2 install"),
+    ),
 }
 
 changes = []
