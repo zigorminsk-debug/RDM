@@ -24,7 +24,7 @@ git submodule update --init --recursive
 ./gradlew assembleDebug
 ```
 
-The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. The preparation script adjusts the pinned FreeRDP Gradle configuration and uses AndroidX Core 1.17.0, which supports compile SDK 36. Android Studio can open this repository directly after the submodule has been initialized and the compatibility script has run.
+The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. The preparation script adjusts the pinned FreeRDP Gradle configuration, caps native OpenSSL/FFmpeg build parallelism, and uses AndroidX Core 1.17.0, which supports compile SDK 36. Android Studio can open this repository directly after the submodule has been initialized and the compatibility script has run.
 
 ## GitHub Actions builds
 
