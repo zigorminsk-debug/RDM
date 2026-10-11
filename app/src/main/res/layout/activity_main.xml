@@ -55,7 +55,7 @@
                     android:layout_height="wrap_content"
                     android:layout_marginTop="1dp"
                     android:letterSpacing="0.12"
-                    android:text="REMOTE DESKTOP MANAGER"
+                    android:text="@string/app_descriptor"
                     android:textColor="@color/muted"
                     android:textSize="9sp"
                     android:textStyle="bold" />
@@ -74,7 +74,7 @@
                 android:paddingTop="7dp"
                 android:paddingEnd="11dp"
                 android:paddingBottom="7dp"
-                android:text="●  PRIVATE"
+                android:text="@string/local_data_chip"
                 android:textColor="@color/teal"
                 android:textSize="10sp"
                 android:textStyle="bold" />
@@ -85,7 +85,7 @@
             android:layout_height="wrap_content"
             android:layout_marginTop="30dp"
             android:letterSpacing="0.16"
-            android:text="YOUR WORKSPACE"
+            android:text="@string/workspace_label"
             android:textColor="@color/primary"
             android:textSize="11sp"
             android:textStyle="bold" />
@@ -209,7 +209,7 @@
                     android:paddingStart="8dp"
                     android:paddingEnd="8dp"
                     android:stateListAnimator="@null"
-                    android:text="Connect"
+                    android:text="@string/connect_button"
                     android:textAllCaps="false"
                     android:textColor="@color/surface"
                     android:textSize="13sp"
@@ -220,9 +220,20 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:layout_marginTop="9dp"
-                android:text="Default port 3389 · credentials can be entered in the session"
+                android:text="@string/quick_port_note"
                 android:textColor="@color/muted"
                 android:textSize="11sp" />
+
+            <CheckBox
+                android:id="@+id/quickMouseMode"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="7dp"
+                android:buttonTint="@color/primary"
+                android:fontFamily="sans"
+                android:text="@string/mouse_mode_option"
+                android:textColor="@color/ink"
+                android:textSize="13sp" />
         </LinearLayout>
 
         <LinearLayout
@@ -251,7 +262,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="4dp"
-                    android:text="0 connections"
+                    android:text="@string/saved_connections"
                     android:textColor="@color/muted"
                     android:textSize="12sp" />
             </LinearLayout>
@@ -267,7 +278,7 @@
                 android:paddingStart="14dp"
                 android:paddingEnd="14dp"
                 android:stateListAnimator="@null"
-                android:text="＋  Add"
+                android:text="@string/add_connection_button"
                 android:textAllCaps="false"
                 android:textColor="@color/primary"
                 android:textSize="13sp"
@@ -364,5 +375,53 @@
             android:text="@string/free_rdp_credit"
             android:textColor="#98A5B8"
             android:textSize="10sp" />
+
+        <Button
+            android:id="@+id/checkUpdates"
+            android:layout_width="match_parent"
+            android:layout_height="44dp"
+            android:layout_marginTop="17dp"
+            android:background="@drawable/bg_secondary_button"
+            android:fontFamily="sans"
+            android:minHeight="0dp"
+            android:stateListAnimator="@null"
+            android:text="@string/check_updates"
+            android:textAllCaps="false"
+            android:textColor="@color/primary"
+            android:textSize="13sp"
+            android:textStyle="bold" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="20dp"
+            android:gravity="center"
+            android:text="@string/developer_credit"
+            android:textColor="@color/muted"
+            android:textSize="11sp" />
+
+        <TextView
+            android:id="@+id/developerEmail"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="5dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="@string/developer_email"
+            android:textColor="@color/primary"
+            android:textSize="12sp" />
+
+        <TextView
+            android:id="@+id/developerPhone"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="3dp"
+            android:clickable="true"
+            android:focusable="true"
+            android:gravity="center"
+            android:text="@string/developer_phone"
+            android:textColor="@color/primary"
+            android:textSize="12sp" />
     </LinearLayout>
 </ScrollView>

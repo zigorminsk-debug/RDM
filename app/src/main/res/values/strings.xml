@@ -1,15 +1,119 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="app_name">RDM</string>
-    <string name="main_title">Your desktops.\nOne tap away.</string>
-    <string name="main_subtitle">A calmer way to manage your remote PCs and servers.</string>
-    <string name="quick_connect_title">Quick connect</string>
-    <string name="quick_connect_subtitle">Connect once without saving a profile.</string>
-    <string name="quick_host_hint">PC name, IP, or host:port</string>
-    <string name="saved_connections">Saved desktops</string>
-    <string name="search_hint">Search name, host, or username</string>
-    <string name="empty_title">Your workspace is ready</string>
-    <string name="empty_message">Add your first desktop to keep all your RDP connections in one place.</string>
-    <string name="password_security_note">Saved passwords are encrypted with Android Keystore and stay on this device.</string>
-    <string name="free_rdp_credit">Remote sessions powered by FreeRDP for Android</string>
+
+    <string name="main_title">Ваши рабочие столы.\nВсе подключения под рукой.</string>
+    <string name="main_subtitle">Управляйте удалёнными компьютерами и серверами в одном приложении.</string>
+    <string name="workspace_label">УДАЛЁННЫЙ ДОСТУП</string>
+    <string name="app_descriptor">МЕНЕДЖЕР УДАЛЁННОГО ДОСТУПА</string>
+    <string name="local_data_chip">●  ДАННЫЕ НА УСТРОЙСТВЕ</string>
+
+    <string name="quick_connect_title">Быстрое подключение</string>
+    <string name="quick_connect_subtitle">Подключение без сохранения профиля.</string>
+    <string name="quick_host_hint">Имя компьютера, IP или адрес:порт</string>
+    <string name="connect_button">Подключить</string>
+    <string name="quick_port_note">Порт по умолчанию — 3389. Учётные данные можно ввести при подключении.</string>
+    <string name="mouse_mode_option">Режим мыши (указатель FreeRDP)</string>
+    <string name="mouse_mode_description">Показывать виртуальный указатель при подключении.</string>
+
+    <string name="saved_connections">Сохранённые подключения</string>
+    <string name="add_connection_button">＋  Добавить</string>
+    <string name="search_hint">Поиск по названию, серверу, компании или логину</string>
+    <string name="company_not_set">Без компании</string>
+    <string name="empty_title">Рабочее пространство готово</string>
+    <string name="empty_message">Добавьте первый компьютер, чтобы хранить подключения к рабочим столам в одном месте.</string>
+    <string name="empty_search_title">Ничего не найдено</string>
+    <string name="empty_search_message">Попробуйте другое название, адрес, компанию или имя пользователя.</string>
+    <string name="connection_and_company_count">%1$s · %2$s</string>
+    <plurals name="saved_connection_count">
+        <item quantity="one">%d подключение</item>
+        <item quantity="few">%d подключения</item>
+        <item quantity="many">%d подключений</item>
+        <item quantity="other">%d подключения</item>
+    </plurals>
+    <plurals name="company_group_count">
+        <item quantity="one">%d компания</item>
+        <item quantity="few">%d компании</item>
+        <item quantity="many">%d компаний</item>
+        <item quantity="other">%d компании</item>
+    </plurals>
+
+    <string name="password_security_note">Сохранённые пароли зашифрованы Android Keystore и остаются на этом устройстве.</string>
+    <string name="free_rdp_credit">Удалённые сеансы работают на FreeRDP для Android</string>
+    <string name="developer_credit">Разработчик: Zakharevich Igor</string>
+    <string name="developer_email">ziv@csl.by</string>
+    <string name="developer_phone">+375293371412</string>
+    <string name="email_app_missing">Не найдено приложение для отправки писем.</string>
+    <string name="phone_app_missing">Не найдено приложение для звонков.</string>
+
+    <string name="remote_computer">Удалённый компьютер</string>
+    <string name="ready_to_connect">Готов к подключению</string>
+    <string name="last_connected">Последний запуск: %1$s</string>
+    <string name="availability_checking">Проверяем доступность порта…</string>
+    <string name="availability_available">Порт доступен по TCP</string>
+    <string name="availability_unavailable">Порт недоступен по TCP</string>
+    <string name="check_server_availability">Проверить доступность сервера</string>
+    <string name="add_favourite">Добавить в избранное</string>
+    <string name="remove_favourite">Убрать из избранного</string>
+    <string name="connection_options">Параметры подключения</string>
+    <string name="connect_to_desktop">Подключиться к компьютеру</string>
+    <string name="edit_connection">Изменить подключение</string>
+    <string name="delete_connection">Удалить</string>
+    <string name="delete_connection_title">Удалить подключение?</string>
+    <string name="delete_connection_message">«%1$s» будет удалено с этого устройства.</string>
+    <string name="cancel">Отмена</string>
+    <string name="connection_no_longer_exists">Это подключение больше не существует.</string>
+    <string name="freerdp_session_open_failed">Не удалось открыть сеанс FreeRDP.</string>
+
+    <string name="go_back">Назад</string>
+    <string name="new_connection">Новое подключение</string>
+    <string name="edit_connection_title">Изменить подключение</string>
+    <string name="editor_subtitle">Добавьте компьютер в рабочее пространство</string>
+    <string name="connection_details_section">ПАРАМЕТРЫ ПОДКЛЮЧЕНИЯ</string>
+    <string name="connection_name_label">Название подключения</string>
+    <string name="connection_name_hint">Например, офисный компьютер</string>
+    <string name="company_label">Компания / группа</string>
+    <string name="company_hint">Например, ООО «Ромашка»</string>
+    <string name="hostname_label">Имя компьютера или IP-адрес</string>
+    <string name="hostname_hint">server.example.com</string>
+    <string name="port_label">Порт</string>
+    <string name="username_label">Имя пользователя</string>
+    <string name="optional">Необязательно</string>
+    <string name="domain_label">Домен Windows (необязательно)</string>
+    <string name="domain_hint">Домен компании или Active Directory</string>
+    <string name="signin_section">ВХОД</string>
+    <string name="password_label">Пароль</string>
+    <string name="password_hint">Оставьте пустым, чтобы вводить при подключении</string>
+    <string name="show_password">Показать</string>
+    <string name="hide_password">Скрыть</string>
+    <string name="pin_favourites">Добавить в избранное</string>
+    <string name="remember_password">Сохранить пароль на этом устройстве</string>
+    <string name="encrypted_locally">🔒  Зашифровано на устройстве</string>
+    <string name="password_vault_explanation">Сохранённые пароли защищены ключом AES-GCM в Android Keystore и не попадают в резервную копию устройства.</string>
+    <string name="mouse_mode_profile">Режим мыши — виртуальный указатель FreeRDP</string>
+    <string name="save_connection">Сохранить подключение</string>
+
+    <string name="connection_not_found">Подключение не найдено.</string>
+    <string name="saved_password_unlock_failed">Не удалось разблокировать сохранённый пароль. Измените подключение и введите пароль заново.</string>
+    <string name="connection_read_failed">Не удалось прочитать данные подключения.</string>
+    <string name="error_connection_name">Укажите название подключения.</string>
+    <string name="password_empty_at_connect">Пароль не введён. FreeRDP запросит его при подключении.</string>
+    <string name="password_not_saved_at_connect">Пароль не сохранён. FreeRDP запросит его при подключении.</string>
+    <string name="password_save_failed">Не удалось безопасно сохранить пароль. Повторите попытку или оставьте поле пустым.</string>
+
+    <string name="check_updates">Проверить обновления</string>
+    <string name="update_checking">Проверяем наличие обновлений на GitHub…</string>
+    <string name="update_available_title">Доступно обновление RDM</string>
+    <string name="update_available_message">Доступна версия RDM %1$s (сборка %2$d). Скачать и установить её?</string>
+    <string name="update_download_and_install">Скачать и установить</string>
+    <string name="update_up_to_date">Установлена последняя доступная версия RDM.</string>
+    <string name="update_check_failed">Не удалось проверить обновления GitHub. Проверьте подключение к интернету и попробуйте ещё раз.</string>
+    <string name="update_download_progress">Загружаем обновление RDM…</string>
+    <string name="update_download_failed">Не удалось загрузить обновление. Проверьте интернет-соединение и повторите попытку.</string>
+    <string name="update_integrity_failed">Проверка целостности APK не пройдена. Установка отменена.</string>
+    <string name="update_install_permission_title">Разрешите установку обновления</string>
+    <string name="update_install_permission_message">Android просит разрешить RDM устанавливать APK-файлы. В настройках включите пункт «Разрешить установку из этого источника», затем вернитесь в приложение.</string>
+    <string name="update_open_settings">Открыть настройки</string>
+    <string name="later">Позже</string>
+    <string name="update_installer_unavailable">На устройстве не найден установщик APK.</string>
 </resources>

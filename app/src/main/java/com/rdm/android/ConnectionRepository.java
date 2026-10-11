@@ -15,7 +15,7 @@ import java.util.Locale;
 /** Local profile store. Password blobs are encrypted separately by {@link PasswordVault}. */
 final class ConnectionRepository extends SQLiteOpenHelper {
     private static final String DATABASE_NAME = "rdm-connections.db";
-    private static final int DATABASE_VERSION = 1;
+    private static final int DATABASE_VERSION = 2;
     private static final String TABLE = "connections";
 
     ConnectionRepository(Context context) {
@@ -27,29 +27,39 @@ final class ConnectionRepository extends SQLiteOpenHelper {
                 + "_id INTEGER PRIMARY KEY AUTOINCREMENT,"
                 + "name TEXT NOT NULL,"
                 + "hostname TEXT NOT NULL,"
+                + "company TEXT NOT NULL DEFAULT '',"
                 + "port INTEGER NOT NULL DEFAULT 3389,"
                 + "username TEXT NOT NULL DEFAULT '',"
                 + "domain TEXT NOT NULL DEFAULT '',"
                 + "password_encrypted BLOB,"
                 + "is_favorite INTEGER NOT NULL DEFAULT 0,"
+                + "mouse_mode INTEGER NOT NULL DEFAULT 0,"
                 + "last_connected_at INTEGER NOT NULL DEFAULT 0"
                 + ")");
     }
 
     @Override public void onUpgrade(SQLiteDatabase db, int oldVersion, int newVersion) {
-        // Keep user profiles when a future schema is introduced; add explicit migrations here.
+        if (oldVersion < 2) {
+            db.execSQL("ALTER TABLE " + TABLE
+                    + " ADD COLUMN company TEXT NOT NULL DEFAULT ''");
+            db.execSQL("ALTER TABLE " + TABLE
+                    + " ADD COLUMN mouse_mode INTEGER NOT NULL DEFAULT 0");
+        }
     }
 
     List<ConnectionProfile> list(String filter) {
         ArrayList<ConnectionProfile> profiles = new ArrayList<>();
-        String orderBy = "is_favorite DESC, last_connected_at DESC, name COLLATE NOCASE ASC";
+        String orderBy = "CASE WHEN TRIM(company)='' THEN 1 ELSE 0 END, "
+                + "company COLLATE NOCASE ASC, is_favorite DESC, last_connected_at DESC, "
+                + "name COLLATE NOCASE ASC";
         try (Cursor cursor = getReadableDatabase().query(TABLE, null, null, null, null, null,
                 orderBy)) {
             String query = filter == null ? "" : filter.trim().toLowerCase(Locale.ROOT);
             while (cursor.moveToNext()) {
                 ConnectionProfile profile = readProfile(cursor);
                 if (query.isEmpty() || contains(profile.name, query) || contains(profile.hostname, query)
-                        || contains(profile.username, query) || contains(profile.domain, query)) {
+                        || contains(profile.company, query) || contains(profile.username, query)
+                        || contains(profile.domain, query)) {
                     profiles.add(profile);
                 }
             }
@@ -76,10 +86,12 @@ final class ConnectionRepository extends SQLiteOpenHelper {
         ContentValues values = new ContentValues();
         values.put("name", profile.name.trim());
         values.put("hostname", profile.hostname.trim());
+        values.put("company", safe(profile.company));
         values.put("port", profile.port);
         values.put("username", safe(profile.username));
         values.put("domain", safe(profile.domain));
         values.put("is_favorite", profile.favorite ? 1 : 0);
+        values.put("mouse_mode", profile.mouseMode ? 1 : 0);
         values.put("last_connected_at", profile.lastConnectedAt);
 
         String password = profile.password == null ? "" : profile.password;
@@ -125,10 +137,12 @@ final class ConnectionRepository extends SQLiteOpenHelper {
         profile.id = cursor.getLong(cursor.getColumnIndexOrThrow("_id"));
         profile.name = cursor.getString(cursor.getColumnIndexOrThrow("name"));
         profile.hostname = cursor.getString(cursor.getColumnIndexOrThrow("hostname"));
+        profile.company = cursor.getString(cursor.getColumnIndexOrThrow("company"));
         profile.port = cursor.getInt(cursor.getColumnIndexOrThrow("port"));
         profile.username = cursor.getString(cursor.getColumnIndexOrThrow("username"));
         profile.domain = cursor.getString(cursor.getColumnIndexOrThrow("domain"));
         profile.favorite = cursor.getInt(cursor.getColumnIndexOrThrow("is_favorite")) == 1;
+        profile.mouseMode = cursor.getInt(cursor.getColumnIndexOrThrow("mouse_mode")) == 1;
         profile.lastConnectedAt = cursor.getLong(cursor.getColumnIndexOrThrow("last_connected_at"));
         byte[] encryptedPassword = cursor.getBlob(cursor.getColumnIndexOrThrow("password_encrypted"));
         profile.passwordSaved = encryptedPassword != null && encryptedPassword.length > 0;

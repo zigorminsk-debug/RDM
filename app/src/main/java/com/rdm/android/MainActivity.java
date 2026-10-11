@@ -1,5 +1,7 @@
 package com.rdm.android;
 
+import android.content.ActivityNotFoundException;
+import android.content.Context;
 import android.content.Intent;
 import android.net.Uri;
 import android.os.Bundle;
@@ -11,8 +13,8 @@ import android.view.Gravity;
 import android.view.View;
 import android.view.inputmethod.EditorInfo;
 import android.view.inputmethod.InputMethodManager;
-import android.content.Context;
 import android.widget.Button;
+import android.widget.CheckBox;
 import android.widget.EditText;
 import android.widget.LinearLayout;
 import android.widget.PopupMenu;
@@ -26,20 +28,35 @@ import androidx.appcompat.app.AppCompatActivity;
 import com.freerdp.freerdpcore.presentation.SessionActivity;
 
 import java.security.GeneralSecurityException;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Map;
+import java.util.Set;
+import java.util.TreeMap;
+import java.util.TreeSet;
 
 public final class MainActivity extends AppCompatActivity {
     private static final int MENU_EDIT = 1;
     private static final int MENU_DELETE = 2;
+    private static final long AVAILABILITY_CACHE_MS = 60_000L;
 
     private ConnectionRepository repository;
     private LinearLayout connectionList;
     private EditText searchField;
     private EditText quickHostField;
+    private CheckBox quickMouseMode;
     private TextView countView;
     private View emptyState;
     private TextView emptyTitle;
     private TextView emptyMessage;
+    private final Map<Long, AvailabilityState> availabilityStates = new HashMap<>();
+    private final Map<Long, Long> availabilityCheckedAt = new HashMap<>();
+    private final Set<Long> availabilityInFlight = new HashSet<>();
+    private final Map<Long, TextView> availabilityLabels = new HashMap<>();
+
+    private enum AvailabilityState { CHECKING, AVAILABLE, UNAVAILABLE }
 
     @Override protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -49,6 +66,7 @@ public final class MainActivity extends AppCompatActivity {
         connectionList = findViewById(R.id.connectionList);
         searchField = findViewById(R.id.searchConnections);
         quickHostField = findViewById(R.id.quickHost);
+        quickMouseMode = findViewById(R.id.quickMouseMode);
         countView = findViewById(R.id.connectionCount);
         emptyState = findViewById(R.id.emptyState);
         emptyTitle = findViewById(R.id.emptyTitle);
@@ -56,6 +74,16 @@ public final class MainActivity extends AppCompatActivity {
 
         findViewById(R.id.addConnection).setOnClickListener(view -> openEditor(0));
         findViewById(R.id.quickConnect).setOnClickListener(view -> quickConnect());
+        findViewById(R.id.checkUpdates).setOnClickListener(
+                view -> UpdateManager.checkForUpdate(this, true));
+        TextView developerEmail = findViewById(R.id.developerEmail);
+        developerEmail.setPaintFlags(developerEmail.getPaintFlags()
+                | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        developerEmail.setOnClickListener(view -> openDeveloperEmail());
+        TextView developerPhone = findViewById(R.id.developerPhone);
+        developerPhone.setPaintFlags(developerPhone.getPaintFlags()
+                | android.graphics.Paint.UNDERLINE_TEXT_FLAG);
+        developerPhone.setOnClickListener(view -> openDeveloperPhone());
         quickHostField.setOnEditorActionListener((view, actionId, event) -> {
             if (actionId == EditorInfo.IME_ACTION_GO || actionId == EditorInfo.IME_ACTION_DONE) {
                 quickConnect();
@@ -70,10 +98,13 @@ public final class MainActivity extends AppCompatActivity {
             }
             @Override public void afterTextChanged(Editable s) { }
         });
+
+        UpdateManager.checkForUpdate(this, false);
     }
 
     @Override protected void onResume() {
         super.onResume();
+        UpdateManager.installPendingIfAllowed(this);
         renderConnections();
     }
 
@@ -83,23 +114,68 @@ public final class MainActivity extends AppCompatActivity {
         List<ConnectionProfile> all = repository.list("");
         List<ConnectionProfile> shown = repository.list(filter);
 
-        countView.setText(all.size() == 1 ? "1 connection" : all.size() + " connections");
+        TreeSet<String> companyNames = new TreeSet<>(String.CASE_INSENSITIVE_ORDER);
+        for (ConnectionProfile profile : all) {
+            String company = profile.company == null ? "" : profile.company.trim();
+            if (!company.isEmpty()) companyNames.add(company);
+        }
+        String connectionCount = getResources().getQuantityString(
+                R.plurals.saved_connection_count, all.size(), all.size());
+        String companyCount = getResources().getQuantityString(
+                R.plurals.company_group_count, companyNames.size(), companyNames.size());
+        countView.setText(getString(R.string.connection_and_company_count,
+                connectionCount, companyCount));
+
         connectionList.removeAllViews();
+        availabilityLabels.clear();
+        Map<String, List<ConnectionProfile>> grouped = new TreeMap<>((left, right) -> {
+            if (left.isEmpty()) return right.isEmpty() ? 0 : 1;
+            if (right.isEmpty()) return -1;
+            return left.compareToIgnoreCase(right);
+        });
         for (ConnectionProfile profile : shown) {
-            connectionList.addView(createConnectionCard(profile));
+            String company = profile.company == null ? "" : profile.company.trim();
+            grouped.computeIfAbsent(company, ignored -> new ArrayList<>()).add(profile);
+        }
+
+        boolean firstGroup = true;
+        for (Map.Entry<String, List<ConnectionProfile>> group : grouped.entrySet()) {
+            String title = group.getKey().isEmpty()
+                    ? getString(R.string.company_not_set) : group.getKey();
+            connectionList.addView(createCompanyHeader(title, firstGroup));
+            firstGroup = false;
+            for (ConnectionProfile profile : group.getValue()) {
+                connectionList.addView(createConnectionCard(profile));
+                requestAvailability(profile, false);
+            }
         }
 
         boolean empty = shown.isEmpty();
         emptyState.setVisibility(empty ? View.VISIBLE : View.GONE);
         if (empty) {
             if (all.isEmpty()) {
-                emptyTitle.setText("Your workspace is ready");
-                emptyMessage.setText("Add your first desktop to keep all your RDP connections in one place.");
+                emptyTitle.setText(R.string.empty_title);
+                emptyMessage.setText(R.string.empty_message);
             } else {
-                emptyTitle.setText("No matching desktops");
-                emptyMessage.setText("Try another name, host, or username.");
+                emptyTitle.setText(R.string.empty_search_title);
+                emptyMessage.setText(R.string.empty_search_message);
             }
         }
+    }
+
+    private View createCompanyHeader(String title, boolean first) {
+        TextView header = new TextView(this);
+        header.setText(title);
+        header.setTextColor(getColor(R.color.ink));
+        header.setTextSize(13);
+        header.setTypeface(header.getTypeface(), android.graphics.Typeface.BOLD);
+        header.setPadding(dp(3), dp(2), dp(3), dp(2));
+        LinearLayout.LayoutParams params = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        params.topMargin = dp(first ? 5 : 14);
+        params.bottomMargin = dp(5);
+        header.setLayoutParams(params);
+        return header;
     }
 
     private View createConnectionCard(ConnectionProfile profile) {
@@ -110,7 +186,7 @@ public final class MainActivity extends AppCompatActivity {
         card.setElevation(dp(1));
         LinearLayout.LayoutParams cardParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        cardParams.bottomMargin = dp(12);
+        cardParams.bottomMargin = dp(10);
         card.setLayoutParams(cardParams);
 
         LinearLayout top = new LinearLayout(this);
@@ -122,6 +198,7 @@ public final class MainActivity extends AppCompatActivity {
         TextView deviceIcon = new TextView(this);
         deviceIcon.setGravity(Gravity.CENTER);
         deviceIcon.setText("▣");
+        deviceIcon.setContentDescription(getString(R.string.remote_computer));
         deviceIcon.setTextColor(getColor(R.color.primary));
         deviceIcon.setTextSize(21);
         deviceIcon.setBackgroundResource(R.drawable.bg_icon_tile);
@@ -157,7 +234,8 @@ public final class MainActivity extends AppCompatActivity {
         TextView favorite = new TextView(this);
         favorite.setGravity(Gravity.CENTER);
         favorite.setText(profile.favorite ? "★" : "☆");
-        favorite.setContentDescription(profile.favorite ? "Remove from favourites" : "Add to favourites");
+        favorite.setContentDescription(getString(profile.favorite
+                ? R.string.remove_favourite : R.string.add_favourite));
         favorite.setTextColor(getColor(profile.favorite ? R.color.primary : R.color.muted));
         favorite.setTextSize(22);
         top.addView(favorite, new LinearLayout.LayoutParams(dp(38), dp(42)));
@@ -169,31 +247,58 @@ public final class MainActivity extends AppCompatActivity {
         TextView more = new TextView(this);
         more.setGravity(Gravity.CENTER);
         more.setText("⋮");
-        more.setContentDescription("Connection options");
+        more.setContentDescription(getString(R.string.connection_options));
         more.setTextColor(getColor(R.color.muted));
         more.setTextSize(23);
         top.addView(more, new LinearLayout.LayoutParams(dp(30), dp(42)));
         more.setOnClickListener(view -> showProfileMenu(more, profile));
+
+        LinearLayout availabilityRow = new LinearLayout(this);
+        availabilityRow.setGravity(Gravity.CENTER_VERTICAL);
+        availabilityRow.setOrientation(LinearLayout.HORIZONTAL);
+        LinearLayout.LayoutParams availabilityParams = new LinearLayout.LayoutParams(
+                LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
+        availabilityParams.topMargin = dp(9);
+        card.addView(availabilityRow, availabilityParams);
+
+        TextView availability = new TextView(this);
+        availability.setTextSize(11);
+        availability.setSingleLine(true);
+        availability.setEllipsize(TextUtils.TruncateAt.END);
+        availabilityRow.addView(availability, new LinearLayout.LayoutParams(
+                0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
+        availabilityLabels.put(profile.id, availability);
+        bindAvailability(profile.id);
+
+        TextView retry = new TextView(this);
+        retry.setGravity(Gravity.CENTER);
+        retry.setText("↻");
+        retry.setTextColor(getColor(R.color.primary));
+        retry.setTextSize(19);
+        retry.setContentDescription(getString(R.string.check_server_availability));
+        availabilityRow.addView(retry, new LinearLayout.LayoutParams(dp(38), dp(32)));
+        retry.setOnClickListener(view -> requestAvailability(profile, true));
 
         LinearLayout statusRow = new LinearLayout(this);
         statusRow.setGravity(Gravity.CENTER_VERTICAL);
         statusRow.setOrientation(LinearLayout.HORIZONTAL);
         LinearLayout.LayoutParams statusParams = new LinearLayout.LayoutParams(
                 LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT);
-        statusParams.topMargin = dp(13);
+        statusParams.topMargin = dp(7);
         card.addView(statusRow, statusParams);
 
-        TextView status = new TextView(this);
-        status.setText(profile.lastConnectedAt == 0
-                ? "Ready to connect"
-                : "Last launched " + DateUtils.getRelativeTimeSpanString(profile.lastConnectedAt,
-                        System.currentTimeMillis(), DateUtils.MINUTE_IN_MILLIS));
-        status.setTextColor(getColor(R.color.teal));
-        status.setTextSize(11);
-        statusRow.addView(status);
-
-        Space spacer = new Space(this);
-        statusRow.addView(spacer, new LinearLayout.LayoutParams(0, 1, 1f));
+        TextView lastConnected = new TextView(this);
+        lastConnected.setText(profile.lastConnectedAt == 0
+                ? getString(R.string.ready_to_connect)
+                : getString(R.string.last_connected, DateUtils.getRelativeTimeSpanString(
+                        profile.lastConnectedAt, System.currentTimeMillis(),
+                        DateUtils.MINUTE_IN_MILLIS)));
+        lastConnected.setTextColor(getColor(R.color.teal));
+        lastConnected.setTextSize(11);
+        lastConnected.setSingleLine(true);
+        lastConnected.setEllipsize(TextUtils.TruncateAt.END);
+        statusRow.addView(lastConnected, new LinearLayout.LayoutParams(0,
+                LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
         TextView account = new TextView(this);
         account.setText(profile.accountLabel());
@@ -206,7 +311,7 @@ public final class MainActivity extends AppCompatActivity {
                 LinearLayout.LayoutParams.WRAP_CONTENT, 1f));
 
         Button connect = new Button(this);
-        connect.setText("Connect to desktop");
+        connect.setText(R.string.connect_to_desktop);
         connect.setAllCaps(false);
         connect.setTextSize(13);
         connect.setTypeface(connect.getTypeface(), android.graphics.Typeface.BOLD);
@@ -226,10 +331,45 @@ public final class MainActivity extends AppCompatActivity {
         return card;
     }
 
+    private void bindAvailability(long profileId) {
+        TextView label = availabilityLabels.get(profileId);
+        if (label == null) return;
+        AvailabilityState state = availabilityStates.get(profileId);
+        if (state == null || state == AvailabilityState.CHECKING) {
+            label.setText(R.string.availability_checking);
+            label.setTextColor(getColor(R.color.muted));
+        } else if (state == AvailabilityState.AVAILABLE) {
+            label.setText(R.string.availability_available);
+            label.setTextColor(getColor(R.color.teal));
+        } else {
+            label.setText(R.string.availability_unavailable);
+            label.setTextColor(getColor(R.color.danger));
+        }
+    }
+
+    private void requestAvailability(ConnectionProfile profile, boolean force) {
+        long profileId = profile.id;
+        if (profileId <= 0 || availabilityInFlight.contains(profileId)) return;
+        long now = System.currentTimeMillis();
+        Long checkedAt = availabilityCheckedAt.get(profileId);
+        if (!force && checkedAt != null && now - checkedAt < AVAILABILITY_CACHE_MS) return;
+
+        availabilityInFlight.add(profileId);
+        availabilityStates.put(profileId, AvailabilityState.CHECKING);
+        bindAvailability(profileId);
+        ServerAvailabilityChecker.check(profile.hostname, profile.port, available -> runOnUiThread(() -> {
+            availabilityInFlight.remove(profileId);
+            availabilityCheckedAt.put(profileId, System.currentTimeMillis());
+            availabilityStates.put(profileId,
+                    available ? AvailabilityState.AVAILABLE : AvailabilityState.UNAVAILABLE);
+            if (!isFinishing() && !isDestroyed()) bindAvailability(profileId);
+        }));
+    }
+
     private void showProfileMenu(View anchor, ConnectionProfile profile) {
         PopupMenu menu = new PopupMenu(this, anchor);
-        menu.getMenu().add(0, MENU_EDIT, 0, "Edit connection");
-        menu.getMenu().add(0, MENU_DELETE, 1, "Delete connection");
+        menu.getMenu().add(0, MENU_EDIT, 0, getString(R.string.edit_connection));
+        menu.getMenu().add(0, MENU_DELETE, 1, getString(R.string.delete_connection));
         menu.setOnMenuItemClickListener(item -> {
             if (item.getItemId() == MENU_EDIT) {
                 openEditor(profile.id);
@@ -246,11 +386,13 @@ public final class MainActivity extends AppCompatActivity {
 
     private void confirmDelete(ConnectionProfile profile) {
         new AlertDialog.Builder(this)
-                .setTitle("Delete connection?")
-                .setMessage("“" + profile.name + "” will be removed from this device.")
-                .setNegativeButton("Cancel", (dialog, which) -> dialog.dismiss())
-                .setPositiveButton("Delete", (dialog, which) -> {
+                .setTitle(R.string.delete_connection_title)
+                .setMessage(getString(R.string.delete_connection_message, profile.name))
+                .setNegativeButton(R.string.cancel, (dialog, which) -> dialog.dismiss())
+                .setPositiveButton(R.string.delete_connection, (dialog, which) -> {
                     repository.delete(profile.id);
+                    availabilityStates.remove(profile.id);
+                    availabilityCheckedAt.remove(profile.id);
                     renderConnections();
                 })
                 .show();
@@ -270,6 +412,7 @@ public final class MainActivity extends AppCompatActivity {
             temporary.name = endpoint.host;
             temporary.hostname = endpoint.host;
             temporary.port = endpoint.port;
+            temporary.mouseMode = quickMouseMode.isChecked();
             hideKeyboard(quickHostField);
             startFreeRdpSession(temporary);
             quickHostField.setError(null);
@@ -283,28 +426,47 @@ public final class MainActivity extends AppCompatActivity {
         try {
             ConnectionProfile profile = repository.get(summary.id, true);
             if (profile == null) {
-                Toast.makeText(this, "This connection no longer exists.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, R.string.connection_no_longer_exists, Toast.LENGTH_SHORT).show();
                 renderConnections();
                 return;
             }
             repository.markConnected(profile.id);
             startFreeRdpSession(profile);
         } catch (GeneralSecurityException | java.io.IOException e) {
-            Toast.makeText(this,
-                    "Could not unlock the saved password. Edit the connection and enter it again.",
-                    Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.saved_password_unlock_failed, Toast.LENGTH_LONG).show();
         }
     }
 
     private void startFreeRdpSession(ConnectionProfile profile) {
         Uri uri = ConnectionUriFactory.build(profile);
         Intent session = new Intent(Intent.ACTION_VIEW, uri, this, SessionActivity.class);
+        session.putExtra("com.rdm.android.MOUSE_MODE", profile.mouseMode);
         session.addFlags(Intent.FLAG_ACTIVITY_NEW_DOCUMENT | Intent.FLAG_ACTIVITY_MULTIPLE_TASK
                 | Intent.FLAG_ACTIVITY_EXCLUDE_FROM_RECENTS);
         try {
             startActivity(session);
         } catch (RuntimeException e) {
-            Toast.makeText(this, "Could not open the FreeRDP session.", Toast.LENGTH_LONG).show();
+            Toast.makeText(this, R.string.freerdp_session_open_failed, Toast.LENGTH_LONG).show();
+        }
+    }
+
+    private void openDeveloperEmail() {
+        Intent email = new Intent(Intent.ACTION_SENDTO,
+                Uri.fromParts("mailto", getString(R.string.developer_email), null));
+        try {
+            startActivity(email);
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, R.string.email_app_missing, Toast.LENGTH_SHORT).show();
+        }
+    }
+
+    private void openDeveloperPhone() {
+        Intent dial = new Intent(Intent.ACTION_DIAL,
+                Uri.fromParts("tel", getString(R.string.developer_phone), null));
+        try {
+            startActivity(dial);
+        } catch (ActivityNotFoundException e) {
+            Toast.makeText(this, R.string.phone_app_missing, Toast.LENGTH_SHORT).show();
         }
     }
 

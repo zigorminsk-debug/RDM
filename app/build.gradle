@@ -6,6 +6,12 @@ def buildRunNumber = System.getenv('GITHUB_RUN_NUMBER')
 def buildRunAttempt = System.getenv('GITHUB_RUN_ATTEMPT') ?: '1'
 def appVersionCode = 1
 def appVersionName = '1.0.0'
+def releaseKeystorePath = System.getenv('ANDROID_KEYSTORE_PATH')
+def releaseStorePassword = System.getenv('ANDROID_KEYSTORE_PASSWORD')
+def releaseKeyAlias = System.getenv('ANDROID_KEY_ALIAS')
+def releaseKeyPassword = System.getenv('ANDROID_KEY_PASSWORD')
+def releaseSigningConfigured = [releaseKeystorePath, releaseStorePassword,
+        releaseKeyAlias, releaseKeyPassword].every { value -> value != null && !value.trim().isEmpty() }
 if (buildRunNumber != null) {
     long runNumber = buildRunNumber.toLong()
     long runAttempt = buildRunAttempt.toLong()
@@ -36,6 +42,27 @@ android {
         }
     }
 
+    signingConfigs {
+        release {
+            if (releaseSigningConfigured) {
+                storeFile file(releaseKeystorePath)
+                storeType 'PKCS12'
+                storePassword releaseStorePassword
+                keyAlias releaseKeyAlias
+                keyPassword releaseKeyPassword
+            }
+        }
+    }
+
+    buildTypes {
+        release {
+            minifyEnabled false
+            if (releaseSigningConfigured) {
+                signingConfig signingConfigs.release
+            }
+        }
+    }
+
     compileOptions {
         sourceCompatibility JavaVersion.VERSION_11
         targetCompatibility JavaVersion.VERSION_11
@@ -45,4 +72,5 @@ android {
 dependencies {
     implementation project(':freerdpcore')
     implementation 'androidx.appcompat:appcompat:1.7.1'
+    implementation 'androidx.core:core:1.17.0'
 }

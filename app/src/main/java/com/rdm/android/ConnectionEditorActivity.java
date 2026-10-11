@@ -18,12 +18,14 @@ public final class ConnectionEditorActivity extends AppCompatActivity {
     private ConnectionRepository repository;
     private ConnectionProfile profile;
     private EditText nameField;
+    private EditText companyField;
     private EditText hostnameField;
     private EditText portField;
     private EditText usernameField;
     private EditText domainField;
     private EditText passwordField;
     private CheckBox favoriteField;
+    private CheckBox mouseModeField;
     private CheckBox rememberPasswordField;
     private TextView passwordVisibility;
     private TextView vaultNotice;
@@ -35,12 +37,14 @@ public final class ConnectionEditorActivity extends AppCompatActivity {
         repository = new ConnectionRepository(this);
 
         nameField = findViewById(R.id.nameField);
+        companyField = findViewById(R.id.companyField);
         hostnameField = findViewById(R.id.hostnameField);
         portField = findViewById(R.id.portField);
         usernameField = findViewById(R.id.usernameField);
         domainField = findViewById(R.id.domainField);
         passwordField = findViewById(R.id.passwordField);
         favoriteField = findViewById(R.id.favoriteField);
+        mouseModeField = findViewById(R.id.mouseModeField);
         rememberPasswordField = findViewById(R.id.rememberPasswordField);
         passwordVisibility = findViewById(R.id.passwordVisibility);
         vaultNotice = findViewById(R.id.vaultNotice);
@@ -48,7 +52,7 @@ public final class ConnectionEditorActivity extends AppCompatActivity {
         long id = getIntent().getLongExtra(EXTRA_PROFILE_ID, 0);
         if (id > 0) {
             loadExistingProfile(id);
-            ((TextView) findViewById(R.id.editorTitle)).setText("Edit connection");
+            ((TextView) findViewById(R.id.editorTitle)).setText(R.string.edit_connection);
         } else {
             profile = new ConnectionProfile();
         }
@@ -63,7 +67,7 @@ public final class ConnectionEditorActivity extends AppCompatActivity {
         try {
             profile = repository.get(id, true);
             if (profile == null) {
-                Toast.makeText(this, "Connection not found.", Toast.LENGTH_SHORT).show();
+                Toast.makeText(this, R.string.connection_not_found, Toast.LENGTH_SHORT).show();
                 finish();
             }
         } catch (GeneralSecurityException | IOException e) {
@@ -75,9 +79,9 @@ public final class ConnectionEditorActivity extends AppCompatActivity {
                 }
                 profile.password = "";
                 profile.passwordSaved = false;
-                vaultNotice.setText("The saved password could not be unlocked. Enter it again to save a new one.");
+                vaultNotice.setText(R.string.saved_password_unlock_failed);
             } catch (GeneralSecurityException | IOException ignored) {
-                Toast.makeText(this, "Could not read this connection.", Toast.LENGTH_LONG).show();
+                Toast.makeText(this, R.string.connection_read_failed, Toast.LENGTH_LONG).show();
                 finish();
             }
         }
@@ -86,12 +90,14 @@ public final class ConnectionEditorActivity extends AppCompatActivity {
     private void populateFields() {
         if (profile == null) return;
         nameField.setText(profile.name);
+        companyField.setText(profile.company);
         hostnameField.setText(profile.hostname);
         portField.setText(String.valueOf(profile.port));
         usernameField.setText(profile.username);
         domainField.setText(profile.domain);
         passwordField.setText(profile.password);
         favoriteField.setChecked(profile.favorite);
+        mouseModeField.setChecked(profile.mouseMode);
         rememberPasswordField.setChecked(profile.passwordSaved);
     }
 
@@ -103,14 +109,16 @@ public final class ConnectionEditorActivity extends AppCompatActivity {
                 : InputType.TYPE_CLASS_TEXT | InputType.TYPE_TEXT_VARIATION_PASSWORD);
         passwordField.setTypeface(android.graphics.Typeface.DEFAULT);
         passwordField.setSelection(Math.max(0, Math.min(selection, passwordField.length())));
-        passwordVisibility.setText(passwordVisible ? "Hide" : "Show");
-        passwordVisibility.setContentDescription(passwordVisible ? "Hide password" : "Show password");
+        passwordVisibility.setText(passwordVisible
+                ? R.string.hide_password : R.string.show_password);
+        passwordVisibility.setContentDescription(getString(passwordVisible
+                ? R.string.hide_password : R.string.show_password));
     }
 
     private void saveProfile() {
         String name = text(nameField).trim();
         if (name.isEmpty()) {
-            nameField.setError("Give this connection a name.");
+            nameField.setError(getString(R.string.error_connection_name));
             nameField.requestFocus();
             return;
         }
@@ -134,19 +142,21 @@ public final class ConnectionEditorActivity extends AppCompatActivity {
         }
 
         profile.name = name;
+        profile.company = text(companyField).trim();
         profile.hostname = host;
         profile.port = port;
         profile.username = text(usernameField).trim();
         profile.domain = text(domainField).trim();
         profile.password = text(passwordField);
         profile.favorite = favoriteField.isChecked();
+        profile.mouseMode = mouseModeField.isChecked();
 
         boolean remember = rememberPasswordField.isChecked() && !profile.password.isEmpty();
         if (rememberPasswordField.isChecked() && profile.password.isEmpty()) {
-            Toast.makeText(this, "No password entered; FreeRDP will ask when you connect.",
+            Toast.makeText(this, R.string.password_empty_at_connect,
                     Toast.LENGTH_SHORT).show();
         } else if (!rememberPasswordField.isChecked() && !profile.password.isEmpty()) {
-            Toast.makeText(this, "Password not saved. FreeRDP will ask when you connect.",
+            Toast.makeText(this, R.string.password_not_saved_at_connect,
                     Toast.LENGTH_SHORT).show();
         }
 
@@ -155,7 +165,7 @@ public final class ConnectionEditorActivity extends AppCompatActivity {
             setResult(RESULT_OK);
             finish();
         } catch (GeneralSecurityException | IOException e) {
-            Toast.makeText(this, "Could not securely save the password. Try again or leave it blank.",
+            Toast.makeText(this, R.string.password_save_failed,
                     Toast.LENGTH_LONG).show();
         }
     }

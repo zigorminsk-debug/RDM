@@ -1,22 +1,21 @@
-# RDM for Android
+# RDM для Android
 
-RDM is a native Android manager for saved Remote Desktop Protocol (RDP) connections. It uses the **FreeRDP Android core** for the actual RDP engine and session UI, and adds a focused connection library on top: saved desktops, quick connect, favourites, search, and encrypted password storage.
+RDM — нативный Android-менеджер подключений по RDP на базе **FreeRDP для Android**. Приложение хранит подключения на устройстве, группирует серверы по компаниям и открывает сеансы в штатном Android-клиенте FreeRDP.
 
-## What it does
+## Возможности
 
-- Save and edit RDP profiles (name, host, port, username, domain).
-- Launch a FreeRDP session directly from a profile or connect to a host without saving it.
-- Search and favourite saved desktops; see the most recently used profiles.
-- Optionally remember a password. Passwords are encrypted with AES-GCM using a key held in Android Keystore. They are not included in Android backup.
-- Keep the connection manager separate from the remote session screen; the latter is FreeRDP's native Android `SessionActivity`.
+- Интерфейс на русском языке.
+- Сохранённые подключения с названием, адресом, портом, компанией, доменом и логином; быстрый вход без сохранения профиля.
+- Группировка серверов по компаниям, поиск и избранное.
+- Проверка доступности RDP-порта по TCP при показе списка и вручную по кнопке обновления в карточке. Проверка подтверждает доступность порта, но не проверяет учётные данные или успешность RDP-аутентификации.
+- Режим виртуального указателя FreeRDP можно включить отдельно для сохранённого профиля или быстрого подключения. Панель FreeRDP во время сеанса также позволяет переключать указатель.
+- Пароли по желанию шифруются AES-GCM ключом Android Keystore и не включаются в резервную копию устройства.
+- Разработчик: **Zakharevich Igor**. Адреса `ziv@csl.by` и `+375293371412` доступны нажатием в приложении.
+- Проверка обновлений при запуске и вручную. APK скачивается из последнего GitHub Release, его SHA-256 проверяется, затем Android открывает системный установщик. Пользователь подтверждает установку; автоматическая тихая установка Android не разрешена.
 
-This initial version targets direct RDP hosts. RD Gateway profiles, `.rdp` import/export, and other remote-desktop protocols are not included yet.
+## Локальная сборка
 
-## Build
-
-Requirements: Android Studio with Android SDK 36 and Build Tools `36.0.0`, JDK 17 or newer, Android NDK `29.0.13113456`, and CMake `4.1.2`.
-
-The upstream FreeRDP repository is pinned as a Git submodule. After cloning this repository, initialize it once:
+Нужны Android SDK 36 и Build Tools `36.0.0`, JDK 17 или новее, Android NDK `29.0.13113456` и CMake `4.1.2`.
 
 ```sh
 git submodule update --init --recursive
@@ -24,14 +23,39 @@ git submodule update --init --recursive
 ./gradlew assembleDebug
 ```
 
-The debug APK is written to `app/build/outputs/apk/debug/app-debug.apk`. The preparation script adjusts the pinned FreeRDP Gradle configuration, caps native OpenSSL/FFmpeg/OpenH264 build parallelism, and uses AndroidX Core 1.17.0, which supports compile SDK 36. Android Studio can open this repository directly after the submodule has been initialized and the compatibility script has run.
+Debug APK появится в `app/build/outputs/apk/debug/app-debug.apk`. Скрипт подготавливает закреплённую версию FreeRDP для используемой конфигурации Gradle и нативной сборки; также он передаёт FreeRDP параметр запуска режима мыши.
 
-## GitHub Actions builds
+## GitHub Actions и номер сборки
 
-`.github/workflows/android-apk.yml` builds a debug APK on every branch push, on pull requests to `main`, and on manual dispatch. Each run is numbered with GitHub's workflow run number and attempt (for example, `12.1`). The APK's Android `versionCode` is `run_number × 1000 + attempt`, and the version name and downloadable artifact include both numbers. Find the APK in the run's **Artifacts** section; artifacts are retained for 30 days.
+`.github/workflows/android-apk.yml` собирает нумерованный debug APK на каждый push, pull request в `main` и ручной запуск. Имя и номер версии включают номер запуска и попытки, например `RDM-20-1.apk`; `versionCode` вычисляется как `run_number × 1000 + attempt`. Артефакт Actions хранится 30 дней.
 
-## FreeRDP attribution
+При сборке ветки `main` workflow дополнительно собирает production APK, подписывает его постоянным ключом, создаёт GitHub Release с APK и `rdm-update.json`, а также публикует артефакт сборки. Если ключ ещё не настроен, debug APK всё равно будет собран, но Release будет пропущен с предупреждением.
 
-The native protocol engine and session implementation are provided by [FreeRDP](https://github.com/FreeRDP/FreeRDP), pinned in `vendor/FreeRDP`. RDM launches the FreeRDP Android session activity with a `freerdp://` connection URI; it does not reimplement the RDP protocol. FreeRDP contains components under the licenses and notices included in that upstream repository (including Apache-2.0 and MPL-2.0 files). See its `LICENSE` and source-file headers before redistributing builds.
+### Однократная настройка постоянной подписи
 
-RDM's profile store contains connection metadata locally. Only saved passwords are encrypted; avoid using the password-save option on shared devices.
+Подпись должна использовать один и тот же закрытый ключ для всех будущих версий. Потеря ключа или его замена не позволит Android установить обновление поверх уже подписанного приложения. Создайте ключ **один раз**, сохраните защищённую резервную копию и не добавляйте файлы ключа в Git:
+
+```sh
+keytool -genkeypair -v \
+  -keystore rdm-release.p12 \
+  -storetype PKCS12 \
+  -alias rdm-release \
+  -keyalg RSA -keysize 4096 -validity 10000 \
+  -dname "CN=Zakharevich Igor, OU=RDM, L=Minsk, ST=Minsk City, C=BY"
+base64 -w 0 rdm-release.p12 > rdm-release.p12.base64
+```
+
+Задайте пароль хранилища и пароль ключа (их можно сделать одинаковыми), затем добавьте в **Settings → Secrets and variables → Actions** репозитория `zigorminsk-debug/RDM` следующие Actions secrets:
+
+- `ANDROID_KEYSTORE_BASE64` — содержимое файла `rdm-release.p12.base64`;
+- `ANDROID_KEYSTORE_PASSWORD` — пароль хранилища;
+- `ANDROID_KEY_ALIAS` — `rdm-release`;
+- `ANDROID_KEY_PASSWORD` — пароль ключа.
+
+Файл `.p12` и его base64-копию храните только в защищённом месте. Не публикуйте их, не помещайте в репозиторий и не передавайте в логи workflow. После добавления secrets следующий push/merge в `main` опубликует подписанный Release автоматически.
+
+> Debug APK подписывается отдельным debug-ключом и не обновит установку production APK. Переход с ранее установленной debug-сборки на первую официальную подписанную сборку может потребовать удалить debug-версию. После первой установки production APK обновления с той же постоянной подписью будут устанавливаться поверх неё.
+
+## FreeRDP
+
+Движок протокола и экран сеанса предоставлены [FreeRDP](https://github.com/FreeRDP/FreeRDP), закреплённым как Git submodule в `vendor/FreeRDP`. RDM передаёт подключение штатному `SessionActivity` FreeRDP и не реализует RDP самостоятельно. Компоненты FreeRDP распространяются на условиях лицензий и уведомлений, указанных в upstream-репозитории; перед распространением сборки ознакомьтесь с его `LICENSE` и заголовками исходных файлов.

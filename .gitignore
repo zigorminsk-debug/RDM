@@ -9,4 +9,6 @@ local.properties
 # Signing material — never commit local release keys
 *.jks
 *.keystore
+*.p12
+*.p12.base64
 release.properties

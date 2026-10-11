@@ -21,6 +21,10 @@ jobs:
     name: "Build APK #${{ github.run_number }}.${{ github.run_attempt }}"
     runs-on: ubuntu-24.04
     timeout-minutes: 90
+    permissions:
+      contents: read
+    outputs:
+      release_enabled: ${{ steps.release_signing.outputs.enabled }}
 
     steps:
       - name: Check out RDM and FreeRDP
@@ -163,3 +167,160 @@ jobs:
           path: artifacts/*
           if-no-files-found: error
           retention-days: 30
+
+      - name: Configure permanent release signing
+        id: release_signing
+        if: github.ref == 'refs/heads/main'
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_BASE64: ${{ secrets.ANDROID_KEYSTORE_BASE64 }}
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          values=("$ANDROID_KEYSTORE_BASE64" "$ANDROID_KEYSTORE_PASSWORD" "$ANDROID_KEY_ALIAS" "$ANDROID_KEY_PASSWORD")
+          missing=0
+          present=0
+          for value in "${values[@]}"; do
+            if [[ -z "$value" ]]; then missing=$((missing + 1)); else present=$((present + 1)); fi
+          done
+          if [[ "$present" -eq 0 ]]; then
+            echo "enabled=false" >> "$GITHUB_OUTPUT"
+            echo "::warning title=Signed release skipped::Add the four permanent Android signing secrets to enable signed GitHub Releases."
+            {
+              echo '### Signed GitHub Release skipped'
+              echo 'The numbered debug APK is available above. Configure all four Android signing secrets to publish an installable, signed release.'
+            } >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          if [[ "$missing" -ne 0 ]]; then
+            echo "::error title=Incomplete Android signing configuration::Set all four release-signing secrets or remove the partial configuration."
+            exit 1
+          fi
+          key_path="$RUNNER_TEMP/rdm-release.p12"
+          printf '%s' "$ANDROID_KEYSTORE_BASE64" | base64 --decode > "$key_path"
+          chmod 600 "$key_path"
+          if [[ ! -s "$key_path" ]]; then
+            echo "::error title=Invalid Android keystore::The decoded release keystore is empty."
+            exit 1
+          fi
+          echo "enabled=true" >> "$GITHUB_OUTPUT"
+
+      - name: Build signed release APK
+        id: gradle_release
+        if: github.ref == 'refs/heads/main' && steps.release_signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          ANDROID_KEYSTORE_PATH: ${{ runner.temp }}/rdm-release.p12
+          ANDROID_KEYSTORE_PASSWORD: ${{ secrets.ANDROID_KEYSTORE_PASSWORD }}
+          ANDROID_KEY_ALIAS: ${{ secrets.ANDROID_KEY_ALIAS }}
+          ANDROID_KEY_PASSWORD: ${{ secrets.ANDROID_KEY_PASSWORD }}
+        run: |
+          set -euo pipefail
+          log_file="$RUNNER_TEMP/gradle-release-build.log"
+          ./gradlew --no-daemon --stacktrace --console=plain --no-parallel --max-workers=1 assembleRelease >"${log_file}" 2>&1
+          tail -n 80 "${log_file}"
+
+      - name: Report Gradle release build failure
+        if: failure() && steps.gradle_release.outcome == 'failure'
+        shell: bash
+        run: |
+          set -euo pipefail
+          log_file="$RUNNER_TEMP/gradle-release-build.log"
+          if [[ -f "${log_file}" ]]; then
+            tail -n 120 "${log_file}"
+            detail="$(tail -n 40 "${log_file}" | tr '\r\n' ' ' | tr -s ' ')"
+          else
+            detail="Gradle release build failed without producing a log file."
+          fi
+          {
+            echo '## Signed release build failed'
+            echo
+            echo '```text'
+            printf '%s\n' "$detail"
+            echo '```'
+          } >> "$GITHUB_STEP_SUMMARY"
+          echo "::error title=Gradle release APK build failed::${detail}"
+
+      - name: Prepare signed release assets
+        if: github.ref == 'refs/heads/main' && steps.release_signing.outputs.enabled == 'true'
+        shell: bash
+        env:
+          BUILD_NUMBER: ${{ github.run_number }}
+          BUILD_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          mkdir -p release-assets
+          apk_name="RDM-${BUILD_NUMBER}-${BUILD_ATTEMPT}.apk"
+          cp app/build/outputs/apk/release/app-release.apk "release-assets/${apk_name}"
+          sha256="$(sha256sum "release-assets/${apk_name}" | cut -d ' ' -f 1)"
+          version_name="1.0.0+${BUILD_NUMBER}.${BUILD_ATTEMPT}"
+          version_code=$((BUILD_NUMBER * 1000 + BUILD_ATTEMPT))
+          python3 - "$apk_name" "$version_name" "$version_code" "$sha256" <<'PY'
+          import json
+          import sys
+          from pathlib import Path
+
+          apk_name, version_name, version_code, sha256 = sys.argv[1:]
+          manifest = {
+              "packageName": "com.rdm.android",
+              "versionCode": int(version_code),
+              "versionName": version_name,
+              "apkAssetName": apk_name,
+              "sha256": sha256,
+          }
+          Path("release-assets/rdm-update.json").write_text(
+              json.dumps(manifest, indent=2) + "\n", encoding="utf-8"
+          )
+          PY
+          {
+            echo "### Signed release RDM ${version_name}"
+            echo "APK: ${apk_name}"
+            echo "SHA-256: ${sha256}"
+          } >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload signed release artifact
+        if: github.ref == 'refs/heads/main' && steps.release_signing.outputs.enabled == 'true'
+        uses: actions/upload-artifact@v7
+        with:
+          name: rdm-release-${{ github.run_number }}-${{ github.run_attempt }}
+          path: release-assets/*
+          if-no-files-found: error
+          retention-days: 90
+
+  publish-release:
+    name: Publish signed GitHub Release
+    needs: build-apk
+    if: github.ref == 'refs/heads/main' && needs.build-apk.outputs.release_enabled == 'true'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: write
+      actions: read
+
+    steps:
+      - name: Download signed release assets
+        uses: actions/download-artifact@v7
+        with:
+          name: rdm-release-${{ github.run_number }}-${{ github.run_attempt }}
+          path: release-assets
+
+      - name: Publish signed GitHub Release
+        shell: bash
+        env:
+          GH_TOKEN: ${{ github.token }}
+          BUILD_NUMBER: ${{ github.run_number }}
+          BUILD_ATTEMPT: ${{ github.run_attempt }}
+        run: |
+          set -euo pipefail
+          version_name="1.0.0+${BUILD_NUMBER}.${BUILD_ATTEMPT}"
+          release_tag="v${version_name}"
+          apk_name="RDM-${BUILD_NUMBER}-${BUILD_ATTEMPT}.apk"
+          gh release create "$release_tag" \
+            "release-assets/${apk_name}" \
+            release-assets/rdm-update.json \
+            --title "RDM ${version_name}" \
+            --notes "Подписанная сборка RDM для Android. Установите APK через системный установщик." \
+            --target "$GITHUB_SHA" \
+            --repo "$GITHUB_REPOSITORY" \
+            --latest

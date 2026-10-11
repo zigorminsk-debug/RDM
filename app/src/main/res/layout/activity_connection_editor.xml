@@ -28,7 +28,7 @@
                 android:layout_width="42dp"
                 android:layout_height="42dp"
                 android:background="@drawable/bg_secondary_button"
-                android:contentDescription="Go back"
+                android:contentDescription="@string/go_back"
                 android:gravity="center"
                 android:text="‹"
                 android:textColor="@color/primary"
@@ -46,7 +46,7 @@
                     android:id="@+id/editorTitle"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="New connection"
+                    android:text="@string/new_connection"
                     android:textColor="@color/ink"
                     android:textSize="19sp"
                     android:textStyle="bold" />
@@ -55,7 +55,7 @@
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
                     android:layout_marginTop="2dp"
-                    android:text="Add a desktop to your workspace"
+                    android:text="@string/editor_subtitle"
                     android:textColor="@color/muted"
                     android:textSize="12sp" />
             </LinearLayout>
@@ -66,14 +66,14 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="23dp"
-            android:text="CONNECTION DETAILS" />
+            android:text="@string/connection_details_section" />
 
         <TextView
             style="@style/RdmFieldLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="17dp"
-            android:text="Connection name" />
+            android:text="@string/connection_name_label" />
 
         <EditText
             android:id="@+id/nameField"
@@ -82,7 +82,7 @@
             android:layout_marginTop="7dp"
             android:autofillHints="name"
             android:background="@drawable/bg_input"
-            android:hint="e.g. Office workstation"
+            android:hint="@string/connection_name_hint"
             android:inputType="textCapSentences"
             android:maxLines="1"
             android:paddingStart="14dp"
@@ -96,7 +96,29 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="PC name or IP address" />
+            android:text="@string/company_label" />
+
+        <EditText
+            android:id="@+id/companyField"
+            android:layout_width="match_parent"
+            android:layout_height="52dp"
+            android:layout_marginTop="7dp"
+            android:background="@drawable/bg_input"
+            android:hint="@string/company_hint"
+            android:inputType="textCapSentences"
+            android:maxLines="1"
+            android:paddingStart="14dp"
+            android:paddingEnd="14dp"
+            android:textColor="@color/ink"
+            android:textColorHint="#93A0B4"
+            android:textSize="14sp" />
+
+        <TextView
+            style="@style/RdmFieldLabel"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="16dp"
+            android:text="@string/hostname_label" />
 
         <EditText
             android:id="@+id/hostnameField"
@@ -105,7 +127,7 @@
             android:layout_marginTop="7dp"
             android:autofillHints="hostname"
             android:background="@drawable/bg_input"
-            android:hint="workstation.example.com"
+            android:hint="@string/hostname_hint"
             android:inputType="textUri"
             android:maxLines="1"
             android:paddingStart="14dp"
@@ -130,7 +152,7 @@
                     style="@style/RdmFieldLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Port" />
+                    android:text="@string/port_label" />
 
                 <EditText
                     android:id="@+id/portField"
@@ -163,7 +185,7 @@
                     style="@style/RdmFieldLabel"
                     android:layout_width="wrap_content"
                     android:layout_height="wrap_content"
-                    android:text="Username" />
+                    android:text="@string/username_label" />
 
                 <EditText
                     android:id="@+id/usernameField"
@@ -172,7 +194,7 @@
                     android:layout_marginTop="7dp"
                     android:autofillHints="username"
                     android:background="@drawable/bg_input"
-                    android:hint="Optional"
+                    android:hint="@string/optional"
                     android:inputType="textNoSuggestions"
                     android:maxLines="1"
                     android:paddingStart="14dp"
@@ -188,7 +210,7 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Domain (optional)" />
+            android:text="@string/domain_label" />
 
         <EditText
             android:id="@+id/domainField"
@@ -196,7 +218,7 @@
             android:layout_height="52dp"
             android:layout_marginTop="7dp"
             android:background="@drawable/bg_input"
-            android:hint="Company or Active Directory domain"
+            android:hint="@string/domain_hint"
             android:inputType="textNoSuggestions"
             android:maxLines="1"
             android:paddingStart="14dp"
@@ -210,14 +232,14 @@
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="27dp"
-            android:text="SIGN-IN" />
+            android:text="@string/signin_section" />
 
         <TextView
             style="@style/RdmFieldLabel"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
             android:layout_marginTop="16dp"
-            android:text="Password" />
+            android:text="@string/password_label" />
 
         <LinearLayout
             android:layout_width="match_parent"
@@ -234,7 +256,7 @@
                 android:layout_weight="1"
                 android:autofillHints="password"
                 android:background="@android:color/transparent"
-                android:hint="Leave blank to enter when connecting"
+                android:hint="@string/password_hint"
                 android:inputType="textPassword"
                 android:maxLines="1"
                 android:paddingStart="14dp"
@@ -247,9 +269,9 @@
                 android:id="@+id/passwordVisibility"
                 android:layout_width="52dp"
                 android:layout_height="match_parent"
-                android:contentDescription="Show password"
+                android:contentDescription="@string/show_password"
                 android:gravity="center"
-                android:text="Show"
+                android:text="@string/show_password"
                 android:textColor="@color/primary"
                 android:textSize="12sp"
                 android:textStyle="bold" />
@@ -262,9 +284,28 @@
             android:layout_marginTop="14dp"
             android:buttonTint="@color/primary"
             android:fontFamily="sans"
-            android:text="Pin to favourites"
+            android:text="@string/pin_favourites"
             android:textColor="@color/ink"
             android:textSize="14sp" />
+
+        <CheckBox
+            android:id="@+id/mouseModeField"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="7dp"
+            android:buttonTint="@color/primary"
+            android:fontFamily="sans"
+            android:text="@string/mouse_mode_profile"
+            android:textColor="@color/ink"
+            android:textSize="14sp" />
+
+        <TextView
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginStart="34dp"
+            android:text="@string/mouse_mode_description"
+            android:textColor="@color/muted"
+            android:textSize="11sp" />
 
         <CheckBox
             android:id="@+id/rememberPasswordField"
@@ -272,7 +313,7 @@
             android:layout_height="wrap_content"
             android:buttonTint="@color/primary"
             android:fontFamily="sans"
-            android:text="Remember password on this device"
+            android:text="@string/remember_password"
             android:textColor="@color/ink"
             android:textSize="14sp" />
 
@@ -287,7 +328,7 @@
             <TextView
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:text="🔒  Encrypted locally"
+                android:text="@string/encrypted_locally"
                 android:textColor="@color/teal"
                 android:textSize="12sp"
                 android:textStyle="bold" />
@@ -298,7 +339,7 @@
                 android:layout_height="wrap_content"
                 android:layout_marginTop="4dp"
                 android:lineSpacingExtra="2dp"
-                android:text="Saved passwords use an AES-GCM key held in Android Keystore. They are excluded from device backup."
+                android:text="@string/password_vault_explanation"
                 android:textColor="@color/muted"
                 android:textSize="11sp" />
         </LinearLayout>
@@ -312,7 +353,7 @@
             android:fontFamily="sans"
             android:minHeight="0dp"
             android:stateListAnimator="@null"
-            android:text="Save connection"
+            android:text="@string/save_connection"
             android:textAllCaps="false"
             android:textColor="@color/surface"
             android:textSize="15sp"
