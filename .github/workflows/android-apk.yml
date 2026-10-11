@@ -99,16 +99,26 @@ jobs:
           import sys
 
           text = Path(sys.argv[1]).read_text(errors="replace")
+          lines = text.splitlines()
+          failure_pattern = re.compile(
+              r"(^FAILED:|ninja: error|CMake Error|fatal error:|error:|make\[[0-9]+\]: \*\*\*|curl: \(|timed out|permission denied|not found)",
+              re.I,
+          )
+          matches = [i for i, line in enumerate(lines) if failure_pattern.search(line)]
+          failure_context = []
+          for i in matches[-20:]:
+              failure_context.extend(lines[max(0, i - 1):min(len(lines), i + 4)])
           start = text.find("* What went wrong:")
           if start >= 0:
               end = text.find("* Try:", start)
               section = text[start:end if end >= 0 else None]
-              detail = section if len(section) <= 2400 else section[:600] + "\n[...truncated...]\n" + section[-1750:]
+              header = section[:500]
+              detail = header + "\nRelevant failure output:\n" + "\n".join(failure_context[-40:]) if failure_context else section[:600] + "\n[...truncated...]\n" + section[-1750:]
           else:
-              lines = text.splitlines()
-              relevant = [line for line in lines if re.search(r"fatal error:|error:|FAILED:|BUILD FAILED|Caused by:", line, re.I)]
-              detail = "\n".join(relevant[-50:]) if relevant else text[-2400:]
-          sys.stdout.write(detail[:2400])
+              detail = "\n".join(failure_context[-40:]) if failure_context else text[-2400:]
+          if len(detail) > 2400:
+              detail = detail[:500] + "\n[...truncated...]\n" + detail[-1850:]
+          sys.stdout.write(detail)
           PY
           )"
           else
